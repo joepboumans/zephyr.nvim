@@ -66,3 +66,8 @@ _Avoid_: RTT log, RTT buffer
 **Default UI**:
 The commands and pickers shipped with the plugin, built only on the public API.
 _Avoid_: frontend, the plugin
+
+## Project rules
+
+**No CI**:
+This repo has no hosted CI (no GitHub Actions or similar), because it costs money and isn't needed. Run `make test` locally before merging. Don't add CI workflows back.
