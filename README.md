@@ -4,7 +4,7 @@ Vendor-neutral [Zephyr](https://zephyrproject.org) support for Neovim, built as 
 
 Vendor plugins such as [nrf-connect.nvim](https://github.com/joepboumans/nrf-connect.nvim) extend it by registering toolchain providers and probe finders (see [ADR 0001](docs/adr/0001-vendor-plugins-extend-through-registries.md)).
 
-> Status: early. Workspace detection, toolchains and drift detection/update work; build, flash, RTT and clangd are stubs.
+> Status: early. Workspace detection, toolchains, builds and drift detection/update work; flash, RTT and clangd are stubs.
 
 ## Requirements
 
@@ -24,6 +24,10 @@ Run `:checkhealth zephyr` to see what it finds.
 
 `:Zephyr build | flash | rtt | update | sdk | clangd`
 
+- `:Zephyr build` runs `west build` for the active build configuration of the current app, with the active toolchain's environment. Output streams into a split; errors and warnings (GCC, LD, CMake, Kconfig, devicetree) go to quickfix, which opens when there are errors. With no build configuration yet it asks for a board first.
+- `:Zephyr build pristine` does the same with `-p always`.
+- `:Zephyr build select` picks the active build configuration among the app's build directories (plain and sysbuild). The choice is kept per app in Neovim's data folder.
+- `:Zephyr build new` picks a board from `west boards` (or takes one typed in) and makes `build_<board>` (with `/` replaced by `_`) the active build configuration; `:Zephyr build` then configures it.
 - `:Zephyr sdk list` shows the toolchains found by every provider; `*` marks the active one.
 - `:Zephyr sdk select` picks the active toolchain for the current west workspace. The choice is kept per workspace in Neovim's data folder.
 - `:Zephyr sdk install [version]` runs `west sdk install` (Zephyr 4.0+) in the workspace.
@@ -40,6 +44,10 @@ The Zephyr SDK is found through `ZEPHYR_SDK_INSTALL_DIR` and the default install
 ## Events
 
 Components fire `User` autocmds named `Zephyr<Event>` (for example `ZephyrBuildFinished`, `ZephyrDriftDetected`, `ZephyrUpdateFinished`, `ZephyrToolchainActivated`) with details in `ev.data`.
+
+- `ZephyrBuildStarted`: `app`, `build_dir`, `board`, `cmd`
+- `ZephyrBuildFinished`: `app`, `build_dir`, `ok`, `code`, `duration` (seconds), `items` (quickfix items)
+- `ZephyrBuildConfigActivated`: `app`, `build_dir`, `board`
 
 ## Development
 

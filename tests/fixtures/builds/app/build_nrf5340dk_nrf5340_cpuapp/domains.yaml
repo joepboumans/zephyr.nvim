@@ -1,0 +1,10 @@
+default: app
+build_dir: @APP@/build_nrf5340dk_nrf5340_cpuapp
+domains:
+  - name: app
+    build_dir: @APP@/build_nrf5340dk_nrf5340_cpuapp/app
+  - name: mcuboot
+    build_dir: @APP@/build_nrf5340dk_nrf5340_cpuapp/mcuboot
+flash_order:
+  - mcuboot
+  - app

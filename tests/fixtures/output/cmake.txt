@@ -1,0 +1,16 @@
+-- Application: /ws/app
+-- Found BOARD.dts: /ws/zephyr/boards/nordic/nrf52840dk/nrf52840dk_nrf52840.dts
+devicetree error: /ws/app/app.overlay:12 (column 5): parse error: expected number or parenthesized expression
+/ws/app/prj.conf:3: warning: attempt to assign the value 'y' to the undefined symbol FOO
+error: Aborting due to Kconfig warnings
+CMake Error at /ws/zephyr/cmake/modules/extensions.cmake:2850 (message):
+  BOARD is not being defined on the CMake command-line, in the environment or
+  by the app.
+
+Call Stack (most recent call first):
+  /ws/zephyr/cmake/modules/boards.cmake:5 (zephyr_check_cache)
+
+CMake Warning at CMakeLists.txt:7 (message):
+  Something to look at
+
+-- Configuring incomplete, errors occurred!

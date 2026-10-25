@@ -1,0 +1,4 @@
+APPLICATION_SOURCE_DIR:PATH=/ws/bootloader/mcuboot/boot/zephyr
+CACHED_BOARD:STRING=nrf5340dk/nrf5340/cpuapp
+CONF_FILE:STRING=/ws/bootloader/mcuboot/boot/zephyr/prj.conf
+ZEPHYR_BASE:PATH=/ws/zephyr
