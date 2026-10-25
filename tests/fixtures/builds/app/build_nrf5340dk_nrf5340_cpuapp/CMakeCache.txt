@@ -1,0 +1,7 @@
+# For build in directory: @APP@/build_nrf5340dk_nrf5340_cpuapp
+APP_DIR:PATH=@APP@
+BOARD:STRING=nrf5340dk/nrf5340/cpuapp
+CACHED_BOARD:STRING=nrf5340dk/nrf5340/cpuapp
+CMAKE_HOME_DIRECTORY:INTERNAL=/ws/zephyr/share/sysbuild
+SB_CONF_FILE:STRING=
+ZEPHYR_BASE:PATH=/ws/zephyr

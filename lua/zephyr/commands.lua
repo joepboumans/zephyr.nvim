@@ -2,12 +2,24 @@ local M = {}
 
 ---Subcommands of :Zephyr. Each is filled in by its component as it lands.
 M.subcommands = {
-	build = false,
-	flash = false,
-	rtt = false,
-	update = false,
-	sdk = false,
-	clangd = false,
+	build = function(args)
+		require("zephyr.ui.build").run(args)
+	end,
+	flash = function(args)
+		require("zephyr.ui.flash").run(args)
+	end,
+	rtt = function(args)
+		require("zephyr.ui.rtt").run(args)
+	end,
+	update = function(args)
+		require("zephyr.ui.update").run(args)
+	end,
+	sdk = function(args)
+		require("zephyr.ui.sdk").run(args)
+	end,
+	clangd = function(args)
+		require("zephyr.ui.clangd").run(args)
+	end,
 }
 
 function M.names()
@@ -32,13 +44,31 @@ function M.run(opts)
 	end
 end
 
+---Words that can follow a subcommand.
+M.actions = {
+	build = { "pristine", "select", "new" },
+	flash = { "erase", "probe" },
+	rtt = { "stop" },
+	sdk = { "list", "select", "install" },
+	update = { "check" },
+}
+
+local function matching(words, arglead)
+	return vim.tbl_filter(function(w)
+		return vim.startswith(w, arglead)
+	end, words)
+end
+
 function M.complete(arglead, cmdline)
-	if cmdline:match("^%s*Zephyr!?%s+%S+%s") then
-		return {}
+	local words = vim.split(vim.trim(cmdline), "%s+")
+	local typed = #words - (arglead == "" and 0 or 1) -- words before the one being completed
+	if typed <= 1 then
+		return matching(M.names(), arglead)
 	end
-	return vim.tbl_filter(function(n)
-		return vim.startswith(n, arglead)
-	end, M.names())
+	if typed == 2 then
+		return matching(M.actions[words[2]] or {}, arglead)
+	end
+	return {}
 end
 
 return M
