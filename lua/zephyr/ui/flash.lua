@@ -50,9 +50,11 @@ function M.pick(app, on_choice)
 	choose(app, list, on_choice)
 end
 
----The Probe to flash through: the active one, else the only one connected;
----with several connected and none active, ask once.
-local function resolve_probe(app, on_probe)
+---The Probe to use: the active one, else the only one connected; with several
+---connected and none active, ask once. `on_probe` is not called when cancelled.
+---@param app zephyr.App
+---@param on_probe fun(probe: zephyr.Probe|nil)
+function M.resolve_probe(app, on_probe)
 	local active = probes.active(workspace_of(app))
 	if active then
 		return on_probe(active)
@@ -80,7 +82,7 @@ function M.flash(app, opts)
 	if flash.is_running(cfg.dir) then
 		return notify("already flashing " .. cfg.name, vim.log.levels.WARN)
 	end
-	resolve_probe(app, function(probe)
+	M.resolve_probe(app, function(probe)
 		local cmd = flash.command(cfg, { probe = probe, erase = opts.erase })
 		local buf = output.open("flash", "$ " .. table.concat(cmd, " "))
 		local started, err = flash.run(app, cfg, {
