@@ -75,9 +75,14 @@ function M.status(app)
 	return vim.startswith(text, M.MARKER) and "generated" or "hand-written"
 end
 
--- JSON strings are valid YAML double-quoted scalars.
+-- A YAML double-quoted scalar. Not vim.json.encode: on Neovim 0.10 it writes `/` as `\/`.
 local function quote(s)
-	return vim.json.encode(s)
+	return '"'
+		.. s:gsub('[%c"\\]', function(c)
+			return ({ ['"'] = '\\"', ["\\"] = "\\\\", ["\n"] = "\\n", ["\t"] = "\\t" })[c]
+				or ("\\x%02x"):format(c:byte())
+		end)
+		.. '"'
 end
 
 ---The `.clangd` text for `cfg` of `app`. The database path is relative to the
