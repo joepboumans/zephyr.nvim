@@ -2,6 +2,7 @@
 local app_mod = require("zephyr.app")
 local build = require("zephyr.build")
 local build_config = require("zephyr.build_config")
+local output = require("zephyr.ui.output")
 
 local M = {}
 
@@ -18,39 +19,6 @@ local function label(cfg)
 	)
 end
 
-local output_buf
-
----The output buffer, shown in a split at the bottom; reused between builds.
-local function output_window(title)
-	if not (output_buf and vim.api.nvim_buf_is_valid(output_buf)) then
-		output_buf = vim.api.nvim_create_buf(false, true)
-		vim.bo[output_buf].bufhidden = "hide"
-		vim.bo[output_buf].filetype = "zephyrbuild"
-		pcall(vim.api.nvim_buf_set_name, output_buf, "zephyr://build")
-	end
-	vim.api.nvim_buf_set_lines(output_buf, 0, -1, false, { title })
-	if vim.fn.bufwinid(output_buf) == -1 then
-		local current = vim.api.nvim_get_current_win()
-		vim.cmd("botright 12split")
-		vim.api.nvim_win_set_buf(0, output_buf)
-		vim.wo.number = false
-		vim.wo.relativenumber = false
-		vim.api.nvim_set_current_win(current)
-	end
-	return output_buf
-end
-
-local function append(buf, line)
-	if not vim.api.nvim_buf_is_valid(buf) then
-		return
-	end
-	vim.api.nvim_buf_set_lines(buf, -1, -1, false, { build.strip_ansi(line) })
-	local win = vim.fn.bufwinid(buf)
-	if win ~= -1 then
-		vim.api.nvim_win_set_cursor(win, { vim.api.nvim_buf_line_count(buf), 0 })
-	end
-end
-
 ---Build the active Build configuration of `app`.
 ---@param app zephyr.App
 ---@param opts? { pristine?: boolean }
@@ -62,14 +30,17 @@ function M.build(app, opts)
 			M.build(app, opts)
 		end)
 	end
-	local buf = output_window(("$ %s"):format(table.concat(build.command(cfg, opts), " ")))
+	local buf = output.open("build", ("$ %s"):format(table.concat(build.command(cfg, opts), " ")))
 	local started = build.run(app, cfg, {
 		pristine = opts.pristine,
 		on_output = function(line)
-			append(buf, line)
+			output.append(buf, line)
 		end,
 		on_exit = function(res)
-			append(buf, ("[%s in %.1fs]"):format(res.ok and "done" or ("failed, exit " .. res.code), res.duration))
+			output.append(
+				buf,
+				("[%s in %.1fs]"):format(res.ok and "done" or ("failed, exit " .. res.code), res.duration)
+			)
 			local errors = vim.tbl_filter(function(i)
 				return i.type == "E"
 			end, res.items)

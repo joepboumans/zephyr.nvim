@@ -5,7 +5,9 @@ M.subcommands = {
 	build = function(args)
 		require("zephyr.ui.build").run(args)
 	end,
-	flash = false,
+	flash = function(args)
+		require("zephyr.ui.flash").run(args)
+	end,
 	rtt = false,
 	update = function(args)
 		require("zephyr.ui.update").run(args)
@@ -41,6 +43,7 @@ end
 ---Words that can follow a subcommand.
 M.actions = {
 	build = { "pristine", "select", "new" },
+	flash = { "erase", "probe" },
 	sdk = { "list", "select", "install" },
 	update = { "check" },
 }
