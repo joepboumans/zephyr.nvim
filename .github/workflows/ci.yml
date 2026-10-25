@@ -14,8 +14,11 @@ jobs:
         nvim: [stable, nightly]
     steps:
       - uses: actions/checkout@v4
-      - uses: rhysd/action-setup-vim@v1
-        with:
-          neovim: true
-          version: ${{ matrix.nvim }}
+      - name: Install Neovim ${{ matrix.nvim }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/nvim"
+          curl -fsSL "https://github.com/neovim/neovim/releases/download/${{ matrix.nvim }}/nvim-linux-x86_64.tar.gz" \
+            | tar xz -C "$RUNNER_TEMP/nvim" --strip-components=1
+          echo "$RUNNER_TEMP/nvim/bin" >> "$GITHUB_PATH"
+      - run: nvim --version
       - run: make test
