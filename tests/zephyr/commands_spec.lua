@@ -16,11 +16,16 @@ describe(":Zephyr", function()
 		assert.are.same({}, commands.complete("", "Zephyr sdk install "))
 	end)
 
+	it("completes build actions", function()
+		assert.are.same({ "pristine", "select", "new" }, commands.complete("", "Zephyr build "))
+	end)
+
 	it("runs an implemented subcommand with the remaining args", function()
 		local got
+		local saved = commands.subcommands.build
 		commands.subcommands.build = function(args) got = args end
 		vim.cmd("Zephyr build --pristine")
-		commands.subcommands.build = false
+		commands.subcommands.build = saved
 		assert.are.same({ "--pristine" }, got)
 	end)
 end)

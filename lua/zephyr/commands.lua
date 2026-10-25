@@ -2,7 +2,9 @@ local M = {}
 
 ---Subcommands of :Zephyr. Each is filled in by its component as it lands.
 M.subcommands = {
-	build = false,
+	build = function(args)
+		require("zephyr.ui.build").run(args)
+	end,
 	flash = false,
 	rtt = false,
 	update = false,
@@ -36,6 +38,7 @@ end
 
 ---Words that can follow a subcommand.
 M.actions = {
+	build = { "pristine", "select", "new" },
 	sdk = { "list", "select", "install" },
 }
 
