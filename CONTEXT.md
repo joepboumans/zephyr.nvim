@@ -1,0 +1,60 @@
+# zephyr.nvim
+
+Vendor-neutral Zephyr support for Neovim, exposed as a Lua API that UIs are built from.
+
+## Language
+
+**Workspace**:
+A west workspace: a top directory holding the manifest repository and every project it pins, such as Zephyr and NCS.
+_Avoid_: project folder, SDK folder
+
+**Manifest**:
+The west manifest of a Workspace; it is the single source of which revision each project should be on.
+_Avoid_: west file, version file
+
+**App**:
+A Zephyr application directory that is built against exactly one Workspace.
+_Avoid_: project, sample (unless it is one)
+
+**Build configuration**:
+One build directory of an App, with the board and config files recorded in it; an App can have several, and one is active.
+_Avoid_: build, target, build folder
+
+**Drift**:
+The state where a project checked out in the Workspace is not on the revision its Manifest names.
+_Avoid_: out of date, mismatch
+
+**Component**:
+One self-contained part of the plugin's Lua API, such as build, flash or RTT, that UIs are assembled from.
+_Avoid_: module (that means a Zephyr module), service
+
+**Toolchain**:
+The compilers and host tools an App is built with.
+_Avoid_: SDK (unless it is the Zephyr SDK)
+
+**Zephyr SDK**:
+The vendor-neutral Toolchain published by the Zephyr project.
+
+**Toolchain provider**:
+A source of Toolchains that can be found, installed and activated; zephyr.nvim ships the Zephyr SDK provider and other plugins register more.
+_Avoid_: toolchain plugin, backend
+
+**Active toolchain**:
+The Toolchain whose environment is used for builds of an App.
+_Avoid_: current toolchain, selected SDK
+
+**Probe**:
+A debug adapter connected to a target board, identified by its serial number; only J-Link is supported.
+_Avoid_: device, programmer, debugger
+
+**RTT viewer**:
+A live view of a target's SEGGER RTT output, read through a Probe; by default the J-Link RTT client in a terminal.
+_Avoid_: log window, serial terminal
+
+**RTT stream**:
+The RTT output as data that other UIs can consume to build their own RTT viewer.
+_Avoid_: RTT log, RTT buffer
+
+**Default UI**:
+The commands and pickers shipped with the plugin, built only on the public API.
+_Avoid_: frontend, the plugin
