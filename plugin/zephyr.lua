@@ -33,3 +33,18 @@ vim.api.nvim_create_autocmd("BufWritePost", {
 		require("zephyr.ui.update").on_write(ev.file)
 	end,
 })
+
+-- Keep a generated .clangd pointing at the active Build configuration.
+-- Disable with setup({ clangd = { auto_write = false } }).
+local clangd_group = vim.api.nvim_create_augroup("zephyr_clangd", { clear = true })
+vim.api.nvim_create_autocmd("User", {
+	group = clangd_group,
+	pattern = { "ZephyrBuildConfigActivated", "ZephyrBuildFinished" },
+	callback = function(ev)
+		local data = ev.data or {}
+		if ev.match == "ZephyrBuildFinished" and not data.ok then
+			return
+		end
+		require("zephyr.clangd").refresh(data.app)
+	end,
+})
