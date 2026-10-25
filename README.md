@@ -74,6 +74,6 @@ Components fire `User` autocmds named `Zephyr<Event>` (for example `ZephyrBuildF
 
 ## Development
 
-`make test` runs the plenary-busted suite headless. Vocabulary lives in [CONTEXT.md](CONTEXT.md).
+`make test` runs the plenary-busted suite headless. Vocabulary lives in [CONTEXT.md](CONTEXT.md). Open problems and their likely causes are in [docs/known-issues.md](docs/known-issues.md).
 
 There is no CI on purpose, because hosted CI costs money. Run `make test` locally before you open or merge a PR, and don't add GitHub Actions workflows.

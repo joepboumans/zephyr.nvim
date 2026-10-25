@@ -20,6 +20,14 @@ _Avoid_: project, sample (unless it is one)
 One build directory of an App, with the board and config files recorded in it; an App can have several, and one is active.
 _Avoid_: build, target, build folder
 
+**Pristine build**:
+A build that wipes a Build configuration's directory and configures it again from scratch, so only what the Build configuration itself records survives.
+_Avoid_: clean build, rebuild
+
+**Board root**:
+A directory that holds board definitions, searched in addition to Zephyr's own boards; custom boards are found through one.
+_Avoid_: board dir, boards folder
+
 **Drift**:
 The state where a project checked out in the Workspace is not on the revision its Manifest names.
 _Avoid_: out of date, mismatch
@@ -62,6 +70,10 @@ _Avoid_: log window, serial terminal
 **RTT stream**:
 The RTT output as data that other UIs can consume to build their own RTT viewer.
 _Avoid_: RTT log, RTT buffer
+
+**Output window**:
+The split of the Default UI that shows the streamed output of a build, flash or update.
+_Avoid_: log window, terminal (unless it is the RTT viewer)
 
 **Default UI**:
 The commands and pickers shipped with the plugin, built only on the public API.
