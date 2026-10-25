@@ -47,6 +47,14 @@ _Avoid_: current toolchain, selected SDK
 A debug adapter connected to a target board, identified by its serial number; only J-Link is supported.
 _Avoid_: device, programmer, debugger
 
+**Probe finder**:
+A source of connected Probes; zephyr.nvim ships the J-Link finder and other plugins register more.
+_Avoid_: probe backend, probe plugin
+
+**Active probe**:
+The Probe a Workspace flashes through, chosen once and remembered.
+_Avoid_: current probe, selected device
+
 **RTT viewer**:
 A live view of a target's SEGGER RTT output, read through a Probe; by default the J-Link RTT client in a terminal.
 _Avoid_: log window, serial terminal

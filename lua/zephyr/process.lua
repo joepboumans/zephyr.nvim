@@ -34,6 +34,7 @@ end
 ---@param cmd string[]
 ---@param opts? zephyr.ProcessOpts passed to vim.system
 ---@param on_exit fun(res: vim.SystemCompleted)
+---@return vim.SystemObj|nil proc nil when the command could not be started
 function M.run(cmd, opts, on_exit)
 	opts = vim.tbl_extend("force", { text = true }, opts or {})
 	local streams, flushers = {}, {}
@@ -58,7 +59,7 @@ function M.run(cmd, opts, on_exit)
 		end
 	end
 
-	local ok, err = pcall(vim.system, cmd, opts, function(res)
+	local ok, proc = pcall(vim.system, cmd, opts, function(res)
 		for _, flush in ipairs(flushers) do
 			flush()
 		end
@@ -71,9 +72,11 @@ function M.run(cmd, opts, on_exit)
 	end)
 	if not ok then
 		vim.schedule(function()
-			on_exit({ code = -1, signal = 0, stdout = "", stderr = tostring(err) })
+			on_exit({ code = -1, signal = 0, stdout = "", stderr = tostring(proc) })
 		end)
+		return nil
 	end
+	return proc
 end
 
 return M

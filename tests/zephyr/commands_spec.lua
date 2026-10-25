@@ -20,6 +20,10 @@ describe(":Zephyr", function()
 		assert.are.same({ "pristine", "select", "new" }, commands.complete("", "Zephyr build "))
 	end)
 
+	it("completes flash actions", function()
+		assert.are.same({ "erase", "probe" }, commands.complete("", "Zephyr flash "))
+	end)
+
 	it("runs an implemented subcommand with the remaining args", function()
 		local got
 		local saved = commands.subcommands.build

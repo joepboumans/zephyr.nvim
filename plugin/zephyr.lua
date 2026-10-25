@@ -4,6 +4,7 @@ end
 vim.g.loaded_zephyr = true
 
 require("zephyr.registry").register("toolchain_provider", require("zephyr.sdk").provider)
+require("zephyr.registry").register("probe_finder", require("zephyr.probes.jlink").finder)
 
 vim.api.nvim_create_user_command("Zephyr", function(opts)
 	require("zephyr.commands").run(opts)

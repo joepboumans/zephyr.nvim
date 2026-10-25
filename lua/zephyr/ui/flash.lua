@@ -1,0 +1,131 @@
+-- Default UI for `:Zephyr flash [erase]` and `:Zephyr flash probe`.
+local app_mod = require("zephyr.app")
+local build_config = require("zephyr.build_config")
+local flash = require("zephyr.flash")
+local probes = require("zephyr.probes")
+local output = require("zephyr.ui.output")
+
+local M = {}
+
+local function notify(msg, level)
+	vim.notify("zephyr: " .. msg, level or vim.log.levels.INFO)
+end
+
+-- The active Probe is kept per Workspace; an App outside one is keyed by itself.
+local function workspace_of(app)
+	return app.workspace or { topdir = app.dir }
+end
+
+local function label(probe)
+	return ("%s  %s  (%s)"):format(probe.name, probe.serial, probe.finder)
+end
+
+---Ask which of `list` to use and make it the active Probe.
+local function choose(app, list, on_choice)
+	local active = probes.active(workspace_of(app))
+	vim.ui.select(list, {
+		prompt = "Probe for " .. app.name,
+		format_item = function(p)
+			return ((active and active.serial == p.serial) and "* " or "  ") .. label(p)
+		end,
+	}, function(choice)
+		if choice then
+			probes.select(workspace_of(app), choice)
+			notify("active probe: " .. label(choice))
+		end
+		on_choice(choice)
+	end)
+end
+
+---Pick the active Probe for `app`'s Workspace among the connected ones.
+---@param app zephyr.App
+---@param on_choice? fun(probe: zephyr.Probe|nil)
+function M.pick(app, on_choice)
+	on_choice = on_choice or function() end
+	local list = probes.list()
+	if #list == 0 then
+		notify("no probes found", vim.log.levels.WARN)
+		return on_choice(nil)
+	end
+	choose(app, list, on_choice)
+end
+
+---The Probe to flash through: the active one, else the only one connected;
+---with several connected and none active, ask once.
+local function resolve_probe(app, on_probe)
+	local active = probes.active(workspace_of(app))
+	if active then
+		return on_probe(active)
+	end
+	local list = probes.list()
+	if #list <= 1 then
+		return on_probe(list[1])
+	end
+	choose(app, list, function(choice)
+		if choice then
+			on_probe(choice)
+		end
+	end)
+end
+
+---Flash the active Build configuration of `app`.
+---@param app zephyr.App
+---@param opts? { erase?: boolean }
+function M.flash(app, opts)
+	opts = opts or {}
+	local cfg = build_config.active(app)
+	if not cfg or not cfg.exists then
+		return notify("nothing built yet; run :Zephyr build first", vim.log.levels.WARN)
+	end
+	if flash.is_running(cfg.dir) then
+		return notify("already flashing " .. cfg.name, vim.log.levels.WARN)
+	end
+	resolve_probe(app, function(probe)
+		local cmd = flash.command(cfg, { probe = probe, erase = opts.erase })
+		local buf = output.open("flash", "$ " .. table.concat(cmd, " "))
+		local started, err = flash.run(app, cfg, {
+			probe = probe,
+			erase = opts.erase,
+			on_output = function(line)
+				output.append(buf, line)
+			end,
+			on_exit = function(res)
+				output.append(
+					buf,
+					("[%s in %.1fs]"):format(res.ok and "done" or ("failed, exit " .. res.code), res.duration)
+				)
+				local where = res.probe and (" on " .. res.probe.name) or ""
+				if res.ok then
+					notify(("flashed %s%s (%.1fs)"):format(cfg.name, where, res.duration))
+				else
+					notify(("flash of %s%s failed"):format(cfg.name, where), vim.log.levels.ERROR)
+				end
+			end,
+		})
+		if not started then
+			notify(err or "flash did not start", vim.log.levels.WARN)
+		end
+	end)
+end
+
+M.actions = { "erase", "probe" }
+
+---@param args string[]
+function M.run(args)
+	local app = app_mod.find()
+	if not app then
+		return notify("not inside a Zephyr app (no CMakeLists.txt with find_package(Zephyr))", vim.log.levels.ERROR)
+	end
+	local action = args[1]
+	if action == nil then
+		M.flash(app)
+	elseif action == "erase" then
+		M.flash(app, { erase = true })
+	elseif action == "probe" then
+		M.pick(app)
+	else
+		notify(("unknown action '%s'; use %s"):format(action, table.concat(M.actions, "|")), vim.log.levels.ERROR)
+	end
+end
+
+return M

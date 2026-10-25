@@ -28,6 +28,9 @@ Run `:checkhealth zephyr` to see what it finds.
 - `:Zephyr build pristine` does the same with `-p always`.
 - `:Zephyr build select` picks the active build configuration among the app's build directories (plain and sysbuild). The choice is kept per app in Neovim's data folder.
 - `:Zephyr build new` picks a board from `west boards` (or takes one typed in) and makes `build_<board>` (with `/` replaced by `_`) the active build configuration; `:Zephyr build` then configures it.
+- `:Zephyr flash` runs `west flash` for the active build configuration with the active toolchain's environment, through the active probe (`--dev-id`). West uses the board's `flash-runner` from `runners.yaml` (of the app's image under sysbuild, where west flashes every image in `flash_order`). Output streams into a split. With several probes connected and none chosen yet it asks once which one to use.
+- `:Zephyr flash erase` does the same with `--erase` (mass erase first).
+- `:Zephyr flash probe` picks the active probe among the connected ones, listed by every probe finder (J-Link Commander's `ShowEmuList`, plus finders from plugins such as nrf-connect.nvim). The choice is kept per workspace in Neovim's data folder.
 - `:Zephyr sdk list` shows the toolchains found by every provider; `*` marks the active one.
 - `:Zephyr sdk select` picks the active toolchain for the current west workspace. The choice is kept per workspace in Neovim's data folder.
 - `:Zephyr sdk install [version]` runs `west sdk install` (Zephyr 4.0+) in the workspace.
@@ -39,6 +42,8 @@ When you open a file inside a west workspace, its drift is checked once per sess
 
 From Lua: `require("zephyr").drift.check(workspace, function(drifted, err) end)` gives `{ name, path, abspath, expected, actual }` per drifted project, and `require("zephyr").update(workspace, { projects = {...}, on_output = function(line, stream) end }, function(ok, result) end)` runs `west update`. They fire `ZephyrDriftDetected` and `ZephyrUpdateFinished`.
 
+From Lua: `require("zephyr.probes").list()` gives the connected probes as `{ finder, serial, name }`, `require("zephyr.probes").select(workspace, probe)` makes one active, and `require("zephyr.flash").run(app, cfg, { runner = "jlink", probe = probe, erase = true, on_output = function(line, stream) end, on_exit = function(result) end })` flashes.
+
 The Zephyr SDK is found through `ZEPHYR_SDK_INSTALL_DIR` and the default install locations (`~`, `~/.local`, `~/.local/opt`, `~/bin`, `/opt`, `/usr`, `/usr/local`).
 
 ## Events
@@ -48,6 +53,9 @@ Components fire `User` autocmds named `Zephyr<Event>` (for example `ZephyrBuildF
 - `ZephyrBuildStarted`: `app`, `build_dir`, `board`, `cmd`
 - `ZephyrBuildFinished`: `app`, `build_dir`, `ok`, `code`, `duration` (seconds), `items` (quickfix items)
 - `ZephyrBuildConfigActivated`: `app`, `build_dir`, `board`
+- `ZephyrFlashStarted`: `app`, `build_dir`, `runner`, `probe`, `cmd`
+- `ZephyrFlashFinished`: `app`, `build_dir`, `runner`, `probe`, `ok`, `code`, `duration` (seconds)
+- `ZephyrProbeSelected`: `workspace`, `probe` (`{ finder, serial, name }`)
 
 ## Development
 
