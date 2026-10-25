@@ -57,6 +57,13 @@ describe("clangd", function()
 		assert.truthy(text:find('  Add:\n    - "-Wno-unknown-warning-option"', 1, true))
 	end)
 
+	it("quotes paths and flags as YAML strings, leaving slashes alone", function()
+		local cfg = { name = "b", image_dir = '/x/my "dir"\\b' }
+		local text = clangd.content(app, cfg, { remove = { "-specs=a/b" }, add = {} })
+		assert.truthy(text:find('CompilationDatabase: "/x/my \\"dir\\"\\\\b"', 1, true))
+		assert.truthy(text:find('    - "-specs=a/b"', 1, true))
+	end)
+
 	it("keeps an absolute path for a build dir outside the App", function()
 		local cfg = vim.tbl_extend("force", build_config.read(root .. "/build"), { image_dir = "/elsewhere/build" })
 		assert.truthy(clangd.content(app, cfg):find('CompilationDatabase: "/elsewhere/build"', 1, true))

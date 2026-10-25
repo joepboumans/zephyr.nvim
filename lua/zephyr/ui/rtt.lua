@@ -38,12 +38,16 @@ function M.open(app)
 	require("zephyr.ui.flash").resolve_probe(app, function(probe)
 		vim.cmd("botright 15split")
 		local win = vim.api.nvim_get_current_win()
+		local mine
 		rtt.open_viewer(app, cfg, {
 			probe = probe,
 			win = win,
 			on_exit = function(code)
+				if M.viewer ~= mine then
+					return -- stopped by :Zephyr rtt stop (the pty hangs up, so the code is 129)
+				end
 				M.viewer = nil
-				if code ~= 0 and code ~= 143 then
+				if code ~= 0 and code ~= 129 and code ~= 143 then
 					notify(("RTT viewer exited with %d"):format(code), vim.log.levels.WARN)
 				end
 			end,
@@ -54,6 +58,7 @@ function M.open(app)
 				end
 				return notify(err or "RTT viewer did not start", vim.log.levels.ERROR)
 			end
+			mine = viewer
 			M.viewer = viewer
 			pcall(vim.api.nvim_buf_set_name, viewer.buf, "zephyr://rtt")
 			vim.wo[win].number = false

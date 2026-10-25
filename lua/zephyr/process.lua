@@ -79,4 +79,15 @@ function M.run(cmd, opts, on_exit)
 	return proc
 end
 
+---Start `cmd` as a terminal job in the current buffer (`jobstart` with `term` on 0.11+, `termopen` on 0.10).
+---@param cmd string[]
+---@param opts table jobstart options (cwd, env, on_exit, ...)
+---@return integer job id, 0 or -1 when it could not be started
+function M.term(cmd, opts)
+	if vim.fn.has("nvim-0.11") == 1 then
+		return vim.fn.jobstart(cmd, vim.tbl_extend("force", opts, { term = true }))
+	end
+	return vim.fn.termopen(cmd, opts)
+end
+
 return M

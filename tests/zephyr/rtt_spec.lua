@@ -311,4 +311,40 @@ describe("rtt viewer", function()
 		assert.is_nil(ui.viewer)
 		vim.notify, vim.fn.jobstop = saved_notify, saved_jobstop
 	end)
+
+	it(":Zephyr rtt stop does not warn about the hang-up exit code", function()
+		local ui = require("zephyr.ui.rtt")
+		local saved_notify, saved_jobstop = vim.notify, vim.fn.jobstop
+		local warnings = {}
+		vim.notify = function(msg, level)
+			if level and level >= vim.log.levels.WARN then
+				table.insert(warnings, msg)
+			end
+		end
+		vim.fn.jobstop = function() end
+		ui.open(app)
+		ui.run({ "stop" })
+		started[1].opts.on_exit(42, 129, "exit")
+		vim.notify, vim.fn.jobstop = saved_notify, saved_jobstop
+		assert.are.same({}, warnings)
+	end)
+
+	it("stops a JLinkGDBServer it started when Neovim exits", function()
+		help_code = 2
+		local killed = 0
+		local process = require("zephyr.process")
+		local saved = process.run
+		process.run = function(cmd, opts, on_exit)
+			if cmd[1] == "JLinkGDBServer" then
+				return { kill = function() killed = killed + 1 end }
+			end
+			return saved(cmd, opts, on_exit)
+		end
+		rtt.open_viewer(app, cfg, {}, function() end)
+		process.run = saved
+		vim.api.nvim_exec_autocmds("VimLeavePre", { group = "zephyr_rtt_servers" })
+		assert.are.equal(1, killed)
+		started[1].opts.on_exit(42, 0, "exit") -- already stopped: not killed again
+		assert.are.equal(1, killed)
+	end)
 end)

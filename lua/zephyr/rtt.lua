@@ -149,12 +149,38 @@ function M.has_west_rtt(app, config, cb)
 	end)
 end
 
--- Start `cmd` as a terminal job in the current buffer.
-local function term_start(cmd, opts)
-	if vim.fn.has("nvim-0.11") == 1 then
-		return vim.fn.jobstart(cmd, vim.tbl_extend("force", opts, { term = true }))
+-- JLinkGDBServers we started. vim.system processes outlive Neovim, so they are
+-- stopped on VimLeavePre; otherwise the server keeps the Probe and its ports.
+local servers = {}
+
+local function stop_server(server)
+	if server and servers[server] then
+		servers[server] = nil
+		pcall(server.kill, server, 15)
 	end
-	return vim.fn.termopen(cmd, opts)
+end
+
+local function start_server(config, opts, cwd, env)
+	local server
+	server = require("zephyr.process").run(M.server_command(config, opts), { cwd = cwd, env = env }, function()
+		if server then
+			servers[server] = nil
+		end
+	end)
+	if server then
+		if next(servers) == nil then
+			vim.api.nvim_create_autocmd("VimLeavePre", {
+				group = vim.api.nvim_create_augroup("zephyr_rtt_servers", { clear = true }),
+				callback = function()
+					for s in pairs(servers) do
+						stop_server(s)
+					end
+				end,
+			})
+		end
+		servers[server] = true
+	end
+	return server
 end
 
 ---@class zephyr.RttViewer
@@ -196,11 +222,7 @@ function M.open_viewer(app, config, opts, cb)
 
 		local server
 		if mode == "jlink" then
-			server = require("zephyr.process").run(
-				M.server_command(config, { probe = probe, port = port }),
-				{ cwd = app.dir, env = env },
-				function() end
-			)
+			server = start_server(config, { probe = probe, port = port }, app.dir, env)
 		end
 
 		local info = { kind = "viewer", mode = mode, app = app.dir, build_dir = config.dir, probe = probe, cmd = cmd }
@@ -209,13 +231,11 @@ function M.open_viewer(app, config, opts, cb)
 		local viewer = { buf = buf, mode = mode, cmd = cmd, server = server }
 		local job
 		vim.api.nvim_buf_call(buf, function()
-			job = term_start(cmd, {
+			job = require("zephyr.process").term(cmd, {
 				cwd = app.dir,
 				env = env,
 				on_exit = function(_, code)
-					if server then
-						pcall(server.kill, server, 15)
-					end
+					stop_server(server)
 					events.emit("RttStopped", vim.tbl_extend("force", info, { code = code }))
 					if opts.on_exit then
 						opts.on_exit(code)
@@ -224,9 +244,7 @@ function M.open_viewer(app, config, opts, cb)
 			})
 		end)
 		if not job or job <= 0 then
-			if server then
-				pcall(server.kill, server, 15)
-			end
+			stop_server(server)
 			return cb(nil, "could not start " .. cmd[1])
 		end
 		viewer.job = job
@@ -306,9 +324,7 @@ function M.stream(opts, on_line)
 		if tcp and not tcp:is_closing() then
 			tcp:close()
 		end
-		if server then
-			pcall(server.kill, server, 15)
-		end
+		stop_server(server)
 		vim.schedule(function()
 			if started then
 				events.emit("RttStopped", vim.tbl_extend("force", info, { err = err }))
@@ -372,11 +388,7 @@ function M.stream(opts, on_line)
 		assert(opts.app and opts.config, "start_server needs opts.app and opts.config")
 		local _, probe, env = context(opts.app, opts.config, opts.probe)
 		info.probe = probe
-		server = require("zephyr.process").run(
-			M.server_command(opts.config, { probe = probe, port = port }),
-			{ cwd = opts.app.dir, env = env },
-			function() end
-		)
+		server = start_server(opts.config, { probe = probe, port = port }, opts.app.dir, env)
 	end
 	connect()
 
