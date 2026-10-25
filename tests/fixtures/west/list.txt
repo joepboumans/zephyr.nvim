@@ -1,0 +1,6 @@
+manifest|nrf|/ws/nrf|HEAD|cloned
+zephyr|zephyr|/ws/zephyr|0d3b8f8b5e1b1a6c2d4e5f60718293a4b5c6d7e8|cloned
+mcuboot|bootloader/mcuboot|/ws/bootloader/mcuboot|v2.1.0-ncs3|cloned
+nrfxlib|nrfxlib|/ws/nrfxlib|v3.4.1|cloned
+hal_nordic|modules/hal/nordic|/ws/modules/hal/nordic|5c8d109371ebb740fbef1f440a3b59e488a36717|cloned
+cmsis|modules/hal/cmsis|/ws/modules/hal/cmsis|4b96cbb174678dcd3ca86e11e1f24bc5f8726da0|not-cloned

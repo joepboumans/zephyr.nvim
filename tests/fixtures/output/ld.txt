@@ -1,0 +1,9 @@
+[140/142] Linking C executable zephyr/zephyr_pre0.elf
+FAILED: zephyr/zephyr_pre0.elf zephyr/zephyr_pre0.map
+/opt/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/../lib/gcc/arm-zephyr-eabi/12.2.0/../../../../arm-zephyr-eabi/bin/ld.bfd: app/libapp.a(main.c.obj): in function `main':
+/ws/app/src/main.c:2:(.text.main+0x9): undefined reference to `ext'
+main.c:(.text+0x9): undefined reference to `other'
+/opt/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/ld.bfd: zephyr/zephyr_pre0.elf section `text' will not fit in region `FLASH'
+/opt/zephyr-sdk-0.17.0/arm-zephyr-eabi/bin/ld.bfd: region `FLASH' overflowed by 1234 bytes
+collect2: error: ld returned 1 exit status
+ninja: build stopped: subcommand failed.

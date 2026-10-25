@@ -2,14 +2,24 @@ local M = {}
 
 ---Subcommands of :Zephyr. Each is filled in by its component as it lands.
 M.subcommands = {
-	build = false,
-	flash = false,
-	rtt = false,
-	update = false,
+	build = function(args)
+		require("zephyr.ui.build").run(args)
+	end,
+	flash = function(args)
+		require("zephyr.ui.flash").run(args)
+	end,
+	rtt = function(args)
+		require("zephyr.ui.rtt").run(args)
+	end,
+	update = function(args)
+		require("zephyr.ui.update").run(args)
+	end,
 	sdk = function(args)
 		require("zephyr.ui.sdk").run(args)
 	end,
-	clangd = false,
+	clangd = function(args)
+		require("zephyr.ui.clangd").run(args)
+	end,
 }
 
 function M.names()
@@ -36,7 +46,11 @@ end
 
 ---Words that can follow a subcommand.
 M.actions = {
+	build = { "pristine", "select", "new" },
+	flash = { "erase", "probe" },
+	rtt = { "stop" },
 	sdk = { "list", "select", "install" },
+	update = { "check" },
 }
 
 local function matching(words, arglead)
