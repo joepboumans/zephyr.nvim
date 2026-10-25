@@ -14,6 +14,7 @@ end
 M.registry = require("zephyr.registry")
 M.events = require("zephyr.events")
 M.drift = require("zephyr.drift")
+M.rtt = require("zephyr.rtt")
 
 ---Run `west update` in `workspace`; see zephyr.update.run.
 ---@param workspace zephyr.Workspace

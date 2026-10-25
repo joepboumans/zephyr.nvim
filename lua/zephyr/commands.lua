@@ -8,7 +8,9 @@ M.subcommands = {
 	flash = function(args)
 		require("zephyr.ui.flash").run(args)
 	end,
-	rtt = false,
+	rtt = function(args)
+		require("zephyr.ui.rtt").run(args)
+	end,
 	update = function(args)
 		require("zephyr.ui.update").run(args)
 	end,
@@ -44,6 +46,7 @@ end
 M.actions = {
 	build = { "pristine", "select", "new" },
 	flash = { "erase", "probe" },
+	rtt = { "stop" },
 	sdk = { "list", "select", "install" },
 	update = { "check" },
 }

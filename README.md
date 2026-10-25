@@ -4,7 +4,7 @@ Vendor-neutral [Zephyr](https://zephyrproject.org) support for Neovim, built as 
 
 Vendor plugins such as [nrf-connect.nvim](https://github.com/joepboumans/nrf-connect.nvim) extend it by registering toolchain providers and probe finders (see [ADR 0001](docs/adr/0001-vendor-plugins-extend-through-registries.md)).
 
-> Status: early. Workspace detection, toolchains, builds and drift detection/update work; flash, RTT and clangd are stubs.
+> Status: early. Workspace detection, toolchains, builds, flashing, drift detection/update and RTT work; clangd is a stub.
 
 ## Requirements
 
@@ -31,6 +31,8 @@ Run `:checkhealth zephyr` to see what it finds.
 - `:Zephyr flash` runs `west flash` for the active build configuration with the active toolchain's environment, through the active probe (`--dev-id`). West uses the board's `flash-runner` from `runners.yaml` (of the app's image under sysbuild, where west flashes every image in `flash_order`). Output streams into a split. With several probes connected and none chosen yet it asks once which one to use.
 - `:Zephyr flash erase` does the same with `--erase` (mass erase first).
 - `:Zephyr flash probe` picks the active probe among the connected ones, listed by every probe finder (J-Link Commander's `ShowEmuList`, plus finders from plugins such as nrf-connect.nvim). The choice is kept per workspace in Neovim's data folder.
+- `:Zephyr rtt` opens the **RTT viewer** in a bottom terminal split: `west rtt -d <build dir> --dev-id <serial>` (Zephyr 4.0+, runners jlink, pyocd and openocd; `-r jlink` is added when the board's debug-runner cannot do RTT) with the active toolchain's environment, through the active probe. On older Zephyr (where `west rtt --help` fails; checked once per Zephyr base) it falls back to `JLinkGDBServer -if SWD -speed auto -device <--device of the jlink runner in runners.yaml> -rtttelnetport 19021 -nohalt -nogui -select usb=<serial>` in the background and `JLinkRTTClient -RTTTelnetPort 19021` in the terminal; the server stops with the terminal. The fallback needs the SEGGER J-Link tools on `PATH` and uses GDB port 2331, so it cannot run next to another J-Link GDB server. Running `:Zephyr rtt` again shows the running viewer.
+- `:Zephyr rtt stop` stops the RTT viewer (and stream) started by `:Zephyr rtt`.
 - `:Zephyr sdk list` shows the toolchains found by every provider; `*` marks the active one.
 - `:Zephyr sdk select` picks the active toolchain for the current west workspace. The choice is kept per workspace in Neovim's data folder.
 - `:Zephyr sdk install [version]` runs `west sdk install` (Zephyr 4.0+) in the workspace.
@@ -44,6 +46,8 @@ From Lua: `require("zephyr").drift.check(workspace, function(drifted, err) end)`
 
 From Lua: `require("zephyr.probes").list()` gives the connected probes as `{ finder, serial, name }`, `require("zephyr.probes").select(workspace, probe)` makes one active, and `require("zephyr.flash").run(app, cfg, { runner = "jlink", probe = probe, erase = true, on_output = function(line, stream) end, on_exit = function(result) end })` flashes.
 
+From Lua, the **RTT stream** gives RTT output as lines for your own RTT viewer: `local s = require("zephyr.rtt").stream({ host = "127.0.0.1", port = 19021, retries = 10, retry_delay = 300, on_connect = function() end, on_close = function(err) end }, function(line) end)` connects to the RTT telnet port (retrying while the server starts), calls `on_line` on the main loop for each line, and returns `s.send(text)`, `s.close()` and `s.is_connected()`. Something must serve RTT on that port (a `:Zephyr rtt` viewer, J-Link Commander, RTT Viewer), or pass `start_server = true, app = app, config = cfg` (optionally `probe`) to start JLinkGDBServer, which is stopped on `close()`. `require("zephyr.rtt").open_viewer(app, cfg, { probe = probe, win = win, on_exit = function(code) end }, function(viewer, err) end)` opens the RTT viewer in `win` and gives `{ buf, job, mode, cmd, stop }`; `west_command`, `server_command` and `client_command` build the command lines.
+
 The Zephyr SDK is found through `ZEPHYR_SDK_INSTALL_DIR` and the default install locations (`~`, `~/.local`, `~/.local/opt`, `~/bin`, `/opt`, `/usr`, `/usr/local`).
 
 ## Events
@@ -56,6 +60,8 @@ Components fire `User` autocmds named `Zephyr<Event>` (for example `ZephyrBuildF
 - `ZephyrFlashStarted`: `app`, `build_dir`, `runner`, `probe`, `cmd`
 - `ZephyrFlashFinished`: `app`, `build_dir`, `runner`, `probe`, `ok`, `code`, `duration` (seconds)
 - `ZephyrProbeSelected`: `workspace`, `probe` (`{ finder, serial, name }`)
+- `ZephyrRttStarted`: RTT viewer: `kind = "viewer"`, `mode` (`"west"` or `"jlink"`), `app`, `build_dir`, `probe`, `cmd`; RTT stream: `kind = "stream"`, `host`, `port` (and `probe` with `start_server`)
+- `ZephyrRttStopped`: the same, plus `code` (viewer) or `err` (stream, when it failed)
 
 ## Development
 
