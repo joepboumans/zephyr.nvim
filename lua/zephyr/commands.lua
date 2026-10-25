@@ -13,7 +13,9 @@ M.subcommands = {
 	sdk = function(args)
 		require("zephyr.ui.sdk").run(args)
 	end,
-	clangd = false,
+	clangd = function(args)
+		require("zephyr.ui.clangd").run(args)
+	end,
 }
 
 function M.names()

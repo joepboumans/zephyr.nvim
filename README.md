@@ -31,6 +31,8 @@ Run `:checkhealth zephyr` to see what it finds.
 - `:Zephyr sdk list` shows the toolchains found by every provider; `*` marks the active one.
 - `:Zephyr sdk select` picks the active toolchain for the current west workspace. The choice is kept per workspace in Neovim's data folder.
 - `:Zephyr sdk install [version]` runs `west sdk install` (Zephyr 4.0+) in the workspace.
+- `:Zephyr clangd` writes `<app>/.clangd` pointing clangd at the active build configuration's `compile_commands.json` (the app image's build dir under sysbuild) and removing GCC-only flags clang rejects. It reports what it wrote, or why not: a `.clangd` without zephyr.nvim's first-line marker is never overwritten. A generated `.clangd` follows along when another build configuration is activated and after each successful build. Options: `setup({ clangd = { remove = {...}, add = {...}, auto_write = true } })`; `remove`/`add` replace the defaults in `require("zephyr.clangd").default_remove`/`default_add`.
+- clangd needs `--query-driver` (a command-line flag only) to find the toolchain's headers: `require("zephyr.clangd").cmd(workspace)` gives `{ "clangd", "--query-driver=<active toolchain's gcc>" }`, and `require("zephyr.clangd").setup_lsp()` starts clangd with it on C/C++ buffers inside a west workspace. Call it yourself; it is not started otherwise.
 
 - `:Zephyr update check` reports **drift**: projects whose checkout (`HEAD`) is not on the revision the manifest names (`manifest-rev`, or the SHA pinned in the manifest).
 - `:Zephyr update [project...]` shows the drifted projects, asks for confirmation (all projects, only the drifted ones, or cancel) and runs `west update` with its output streamed into a split.
@@ -48,6 +50,7 @@ Components fire `User` autocmds named `Zephyr<Event>` (for example `ZephyrBuildF
 - `ZephyrBuildStarted`: `app`, `build_dir`, `board`, `cmd`
 - `ZephyrBuildFinished`: `app`, `build_dir`, `ok`, `code`, `duration` (seconds), `items` (quickfix items)
 - `ZephyrBuildConfigActivated`: `app`, `build_dir`, `board`
+- `ZephyrClangdWritten`: `app`, `path`, `build_dir`
 
 ## Development
 
