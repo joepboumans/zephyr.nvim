@@ -1,0 +1,174 @@
+-- Default UI for Drift: `:Zephyr update [check | PROJECT...]` and the automatic
+-- check on opening a Workspace file. Never updates without asking.
+local zephyr = require("zephyr")
+local workspace = require("zephyr.workspace")
+
+local M = {}
+
+-- Workspaces (by topdir) already checked automatically this session.
+M.checked = {}
+
+local function notify(msg, level)
+	vim.notify("zephyr: " .. msg, level or vim.log.levels.INFO)
+end
+
+local function describe(p)
+	return ("%s (%s): %s -> %s"):format(p.name, p.path, p.actual:sub(1, 12), p.expected:sub(1, 12))
+end
+
+local function drift_message(drifted)
+	local lines = { ("%d project(s) drifted from the Manifest; run :Zephyr update"):format(#drifted) }
+	for _, p in ipairs(drifted) do
+		table.insert(lines, "  " .. describe(p))
+	end
+	return table.concat(lines, "\n")
+end
+
+---`:Zephyr update check`: report Drift, also when there is none.
+---@param ws zephyr.Workspace
+function M.check(ws)
+	zephyr.drift.check(ws, function(drifted, err)
+		if not drifted then
+			return notify("drift check failed: " .. err, vim.log.levels.ERROR)
+		end
+		if #drifted == 0 then
+			notify("no drift: every project is on its Manifest revision")
+		else
+			notify(drift_message(drifted), vim.log.levels.WARN)
+		end
+	end)
+end
+
+---Check quietly, only telling about Drift that was found.
+---@param ws zephyr.Workspace
+function M.check_quiet(ws)
+	zephyr.drift.check(ws, function(drifted)
+		if drifted and #drifted > 0 then
+			notify(drift_message(drifted), vim.log.levels.WARN)
+		end
+	end)
+end
+
+local function enabled()
+	return (zephyr.config.drift or {}).auto_check ~= false
+end
+
+---Autocmd hook for a file being opened: check its Workspace once per session.
+---@param path string
+function M.on_open(path)
+	if not enabled() or path == "" or path:match("^%w+://") then
+		return
+	end
+	local ws = workspace.find(path)
+	if ws and not M.checked[ws.topdir] then
+		M.checked[ws.topdir] = true
+		M.check_quiet(ws)
+	end
+end
+
+---Autocmd hook for a file being written: check again when it is the Manifest.
+---@param path string
+function M.on_write(path)
+	if not enabled() or path == "" or path:match("^%w+://") then
+		return
+	end
+	local ws = workspace.find(path)
+	path = vim.fs.normalize(vim.fn.fnamemodify(path, ":p"))
+	if ws and path == vim.fs.normalize(ws.manifest_file) then
+		M.checked[ws.topdir] = true
+		M.check_quiet(ws)
+	end
+end
+
+-- Scratch buffer that shows the streamed `west update` output.
+local function output_window(ws)
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.bo[buf].bufhidden = "wipe"
+	pcall(vim.api.nvim_buf_set_name, buf, "zephyr://update/" .. ws.topdir)
+	vim.cmd("botright 12split")
+	local win = vim.api.nvim_get_current_win()
+	vim.api.nvim_win_set_buf(win, buf)
+	vim.cmd("wincmd p")
+	local first = true
+	return function(line)
+		if not vim.api.nvim_buf_is_valid(buf) then
+			return
+		end
+		vim.api.nvim_buf_set_lines(buf, first and 0 or -1, -1, false, { line })
+		first = false
+		if vim.api.nvim_win_is_valid(win) then
+			vim.api.nvim_win_set_cursor(win, { vim.api.nvim_buf_line_count(buf), 0 })
+		end
+	end
+end
+
+---Run `west update` with its output in a split.
+---@param ws zephyr.Workspace
+---@param projects string[]
+function M.update(ws, projects)
+	notify("running west update" .. (#projects > 0 and (" " .. table.concat(projects, " ")) or "") .. " ...")
+	local append = output_window(ws)
+	zephyr.update(ws, { projects = projects, on_output = append }, function(ok, res)
+		if ok then
+			notify("west update finished")
+		else
+			notify(("west update failed (exit %d); see the output split"):format(res.code), vim.log.levels.ERROR)
+		end
+	end)
+end
+
+---`:Zephyr update [PROJECT...]`: show Drift first, then ask before updating.
+---@param ws zephyr.Workspace
+---@param projects string[] limit the update to these; empty means all
+function M.confirm(ws, projects)
+	zephyr.drift.check(ws, function(drifted, err)
+		local header
+		if not drifted then
+			header = "drift check failed: " .. err
+		elseif #drifted == 0 then
+			header = "no drift detected"
+		else
+			header = drift_message(drifted):gsub("; run :Zephyr update", "")
+		end
+		notify(header, drifted and #drifted > 0 and vim.log.levels.WARN or vim.log.levels.INFO)
+
+		local choices = {}
+		if #projects > 0 then
+			table.insert(choices, { label = "Update " .. table.concat(projects, ", "), projects = projects })
+		else
+			table.insert(choices, { label = "Update all projects (west update)", projects = {} })
+			if drifted and #drifted > 0 then
+				local names = vim.tbl_map(function(p)
+					return p.name
+				end, drifted)
+				table.insert(choices, { label = "Update drifted projects only", projects = names })
+			end
+		end
+		table.insert(choices, { label = "Cancel" })
+		vim.ui.select(choices, {
+			prompt = "west update in " .. ws.topdir,
+			format_item = function(c)
+				return c.label
+			end,
+		}, function(choice)
+			if choice and choice.projects then
+				M.update(ws, choice.projects)
+			end
+		end)
+	end)
+end
+
+---@param args string[]
+function M.run(args)
+	local ws = workspace.find()
+	if not ws then
+		return notify("not inside a west workspace", vim.log.levels.ERROR)
+	end
+	if args[1] == "check" then
+		M.check(ws)
+	else
+		M.confirm(ws, args)
+	end
+end
+
+return M

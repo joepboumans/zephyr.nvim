@@ -5,7 +5,9 @@ M.subcommands = {
 	build = false,
 	flash = false,
 	rtt = false,
-	update = false,
+	update = function(args)
+		require("zephyr.ui.update").run(args)
+	end,
 	sdk = function(args)
 		require("zephyr.ui.sdk").run(args)
 	end,
@@ -37,6 +39,7 @@ end
 ---Words that can follow a subcommand.
 M.actions = {
 	sdk = { "list", "select", "install" },
+	update = { "check" },
 }
 
 local function matching(words, arglead)
