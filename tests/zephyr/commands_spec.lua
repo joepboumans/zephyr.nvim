@@ -10,6 +10,12 @@ describe(":Zephyr", function()
 		assert.are.same(#commands.names(), #commands.complete("", "Zephyr "))
 	end)
 
+	it("completes sdk actions", function()
+		assert.are.same({ "install" }, commands.complete("in", "Zephyr sdk in"))
+		assert.are.same({ "list", "select", "install" }, commands.complete("", "Zephyr sdk "))
+		assert.are.same({}, commands.complete("", "Zephyr sdk install "))
+	end)
+
 	it("runs an implemented subcommand with the remaining args", function()
 		local got
 		commands.subcommands.build = function(args) got = args end

@@ -1,0 +1,33 @@
+local workspace = require("zephyr.workspace")
+local root = vim.fn.fnamemodify("tests/fixtures/workspace", ":p"):gsub("/$", "")
+
+describe("workspace", function()
+	it("parses .west/config sections", function()
+		local cfg = workspace.parse_config("[manifest]\npath = nrf\n# comment\nfile=west.yml\n\n[zephyr]\nbase = zephyr\n")
+		assert.are.same({ manifest = { path = "nrf", file = "west.yml" }, zephyr = { base = "zephyr" } }, cfg)
+	end)
+
+	it("finds the workspace from a file deep inside an app", function()
+		local ws = workspace.find(root .. "/app/src/main.c")
+		assert.are.equal(root, ws.topdir)
+		assert.are.equal(root .. "/app", ws.manifest_dir)
+		assert.are.equal(root .. "/app/west.yml", ws.manifest_file)
+		assert.are.equal(root .. "/zephyr", ws.zephyr_base)
+	end)
+
+	it("uses the cwd when the current buffer is not a file", function()
+		local cwd = vim.fn.getcwd()
+		vim.cmd("enew")
+		vim.bo.buftype = "nofile"
+		vim.api.nvim_buf_set_name(0, "health://")
+		vim.cmd.cd(root .. "/app")
+		local ws = workspace.find()
+		vim.cmd.cd(cwd)
+		vim.cmd("bwipeout!")
+		assert.are.equal(root, ws.topdir)
+	end)
+
+	it("returns nil outside a workspace", function()
+		assert.is_nil(workspace.find(vim.fn.tempname()))
+	end)
+end)

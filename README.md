@@ -4,7 +4,7 @@ Vendor-neutral [Zephyr](https://zephyrproject.org) support for Neovim, built as 
 
 Vendor plugins such as [nrf-connect.nvim](https://github.com/joepboumans/nrf-connect.nvim) extend it by registering toolchain providers and probe finders (see [ADR 0001](docs/adr/0001-vendor-plugins-extend-through-registries.md)).
 
-> Status: skeleton. Commands exist but components are not implemented yet.
+> Status: early. Workspace detection and toolchains work; build, flash, RTT, update and clangd are stubs.
 
 ## Requirements
 
@@ -23,6 +23,12 @@ Run `:checkhealth zephyr` to see what it finds.
 ## Commands
 
 `:Zephyr build | flash | rtt | update | sdk | clangd`
+
+- `:Zephyr sdk list` shows the toolchains found by every provider; `*` marks the active one.
+- `:Zephyr sdk select` picks the active toolchain for the current west workspace. The choice is kept per workspace in Neovim's data folder.
+- `:Zephyr sdk install [version]` runs `west sdk install` (Zephyr 4.0+) in the workspace.
+
+The Zephyr SDK is found through `ZEPHYR_SDK_INSTALL_DIR` and the default install locations (`~`, `~/.local`, `~/.local/opt`, `~/bin`, `/opt`, `/usr`, `/usr/local`).
 
 ## Events
 
