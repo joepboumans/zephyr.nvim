@@ -112,4 +112,39 @@ function M.append(b, line)
 	end
 end
 
+---The on_start, on_output and on_exit callbacks that show a Job in the Output window:
+---the Toolchain and the command as its title, each line, then `[done|failed, exit N|stopped in N.Ns]`.
+---`q` stops the Job while it runs. `opts.on_start` and `opts.on_exit` run after the window's own work.
+---@param name string the kind of Job, e.g. "build"
+---@param opts { stop: fun(), on_start?: fun(info: table), on_exit?: fun(result: table) }
+---@return { on_start: fun(info: { cmd: string[], toolchain?: zephyr.ToolchainChoice }), on_output: fun(line: string), on_exit: fun(result: zephyr.JobResult) }
+function M.follow(name, opts)
+	local b
+	return {
+		on_start = function(info)
+			local title = { "$ " .. table.concat(info.cmd, " ") }
+			if info.toolchain then
+				table.insert(title, 1, require("zephyr.toolchain").describe(info.toolchain))
+			end
+			b = M.open(name, title, { stop = opts.stop })
+			if opts.on_start then
+				opts.on_start(info)
+			end
+		end,
+		on_output = function(line)
+			M.append(b, line)
+		end,
+		on_exit = function(res)
+			if b then -- nil when the Job never started
+				M.finish(opts.stop)
+				local status = res.stopped and "stopped" or (res.ok and "done" or ("failed, exit " .. res.code))
+				M.append(b, ("[%s in %.1fs]"):format(status, res.duration))
+			end
+			if opts.on_exit then
+				opts.on_exit(res)
+			end
+		end,
+	}
+end
+
 return M

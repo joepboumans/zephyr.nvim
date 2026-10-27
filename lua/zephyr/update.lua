@@ -41,7 +41,7 @@ function M.run(workspace, opts, cb)
 		end,
 	})
 	if not started and cb then
-		cb(false, { code = -1, stopped = false, duration = 0, output = { err } })
+		cb(false, { ok = false, code = -1, stopped = false, duration = 0, output = { err } })
 	end
 	return {
 		stop = function()
