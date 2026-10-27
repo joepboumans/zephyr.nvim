@@ -1,0 +1,35 @@
+cmake:
+  application:
+    configuration-dir: @APP@/app
+    source-dir: @APP@/app
+  board:
+    name: nrf5340dk
+    path:
+      - /ws/zephyr/boards/nordic/nrf5340dk
+    qualifiers: nrf5340/cpuapp
+    revision:
+  devicetree:
+    bindings-dirs:
+      - /ws/zephyr/dts/bindings
+    extra-user-files:
+      - @APP@/app/app.overlay
+    files:
+      - /ws/zephyr/boards/nordic/nrf5340dk/nrf5340dk_nrf5340_cpuapp.dts
+    include-dirs:
+      - /ws/zephyr/dts
+  kconfig:
+    extra-user-files:
+      - @APP@/app/debug.conf
+    files:
+      - /ws/zephyr/boards/nordic/nrf5340dk/nrf5340dk_nrf5340_cpuapp_defconfig
+      - @APP@/app/prj.conf
+    user-files:
+      - @APP@/app/prj.conf
+  sysbuild: true
+  toolchain:
+    name: zephyr
+    path: /opt/toolchains/zephyr
+  zephyr:
+    version: 3.7.99
+    zephyr-base: /ws/zephyr
+version: 0.1.0

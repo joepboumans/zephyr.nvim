@@ -46,7 +46,7 @@ end
 
 ---Words that can follow a subcommand.
 M.actions = {
-	build = { "pristine", "select", "new" },
+	build = { "pristine", "select", "new", "edit", "app" },
 	flash = { "erase", "probe" },
 	rtt = { "stop" },
 	sdk = { "list", "select", "install" },

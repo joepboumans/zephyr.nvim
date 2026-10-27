@@ -1,0 +1,7 @@
+# For build in directory: @APP@/app/build_vt
+APP_DIR:PATH=@APP@/app
+BOARD:STRING=nrf5340dk/nrf5340/cpuapp
+CACHED_BOARD:STRING=nrf5340dk/nrf5340/cpuapp
+BOARD_ROOT:UNINITIALIZED=@APP@/custom
+CMAKE_HOME_DIRECTORY:INTERNAL=/ws/zephyr/share/sysbuild
+ZEPHYR_BASE:PATH=/ws/zephyr

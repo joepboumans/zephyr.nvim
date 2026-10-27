@@ -194,12 +194,15 @@ function M.query_driver(toolchain)
 end
 
 ---The clangd command line for files of `workspace`, with --query-driver for
----its Active toolchain when it has one.
+---the Active toolchain of `app`'s active Build configuration (by default the
+---Workspace's Active app), else the Workspace's default Toolchain.
 ---@param workspace? zephyr.Workspace
+---@param app? zephyr.App
 ---@return string[]
-function M.cmd(workspace)
+function M.cmd(workspace, app)
 	local cmd = { "clangd" }
-	local tc = workspace and require("zephyr.toolchain").active(workspace)
+	local target = app or workspace
+	local tc = target and require("zephyr.toolchain").active(target)
 	if tc and tc.path then
 		table.insert(cmd, "--query-driver=" .. M.query_driver(tc))
 	end
@@ -208,7 +211,7 @@ end
 
 ---Start clangd with M.cmd() on C/C++ buffers inside a Workspace, rooted at
 ---their App (or the Workspace). Only runs when called; returns the autocmd id.
----@param opts? { filetypes?: string[], cmd?: fun(workspace: zephyr.Workspace): string[] }
+---@param opts? { filetypes?: string[], cmd?: fun(workspace: zephyr.Workspace, app: zephyr.App|nil): string[] }
 ---@return integer
 function M.setup_lsp(opts)
 	opts = opts or {}
@@ -228,7 +231,7 @@ function M.setup_lsp(opts)
 			local app = require("zephyr.app").find(file)
 			vim.lsp.start({
 				name = "clangd",
-				cmd = (opts.cmd or M.cmd)(ws),
+				cmd = (opts.cmd or M.cmd)(ws, app),
 				root_dir = app and app.dir or ws.topdir,
 			}, { bufnr = ev.buf })
 		end,

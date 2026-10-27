@@ -37,9 +37,15 @@ function M.check()
 		else
 			vim.health.error("Manifest not found: " .. ws.manifest_file)
 		end
+		local active_app = require("zephyr.app").active(ws)
+		vim.health.info("Active app: " .. (active_app and active_app.dir or "none yet"))
 		local tc, selected = require("zephyr.toolchain").active(ws)
 		if tc then
 			vim.health.ok(("Active toolchain: %s (%s)%s"):format(tc.name, tc.path, selected and "" or ", default"))
+			local _, err = require("zephyr.toolchain").environment(tc)
+			if err then
+				vim.health.error(err)
+			end
 		else
 			vim.health.warn("No toolchain found", "Run `:Zephyr sdk install` or install the Zephyr SDK")
 		end

@@ -62,6 +62,7 @@ end
 ---@field runner? string flash with this runner (`-r`) instead of the flash-runner in runners.yaml
 ---@field probe? zephyr.Probe flash through this Probe (`--dev-id`); defaults to the Workspace's active Probe
 ---@field erase? boolean mass erase before flashing (`--erase`)
+---@field on_start? fun(info: { cmd: string[], toolchain: zephyr.ToolchainChoice }) right before west starts
 ---@field on_output? fun(line: string, stream: "stdout"|"stderr") each output line, as it arrives
 ---@field on_exit? fun(result: zephyr.FlashResult)
 
@@ -69,6 +70,7 @@ end
 ---@field app string
 ---@field ok boolean
 ---@field code integer
+---@field stopped boolean true when stopped with flash.stop()
 ---@field build_dir string
 ---@field runner string|nil
 ---@field probe zephyr.Probe|nil
@@ -99,7 +101,20 @@ local running = {}
 ---True while a flash of `build_dir` is running.
 ---@param build_dir string
 function M.is_running(build_dir)
-	return running[build_dir] == true
+	return running[build_dir] ~= nil
+end
+
+---Stop the running flash of `build_dir`. Its ZephyrFlashFinished still fires, with `ok = false`.
+---@param build_dir string
+---@return boolean stopped false when no flash of it was running
+function M.stop(build_dir)
+	local r = running[build_dir]
+	if not r then
+		return false
+	end
+	r.stopped = true
+	require("zephyr.process").kill(r.proc)
+	return true
 end
 
 local function workspace_of(app, config)
@@ -131,9 +146,13 @@ function M.run(app, config, opts)
 		probe = require("zephyr.probes").active(ws or { topdir = app.dir })
 	end
 	local runner = opts.runner or M.default_runner(config)
-	running[config.dir] = true
+	local env, err, choice = require("zephyr.toolchain").env(app, config)
+	if err then
+		return false, err
+	end
+	local r = {}
+	running[config.dir] = r
 
-	local env = ws and require("zephyr.toolchain").env(ws) or nil
 	local cmd = M.command(config, { runner = opts.runner, probe = probe, erase = opts.erase })
 	local output = {}
 	local function on_line(stream)
@@ -147,10 +166,14 @@ function M.run(app, config, opts)
 
 	local started = vim.uv.hrtime()
 	local info = { app = app.dir, build_dir = config.dir, runner = runner, probe = probe }
+	if opts.on_start then
+		opts.on_start({ cmd = cmd, toolchain = choice })
+	end
 	events.emit("FlashStarted", vim.tbl_extend("force", info, { cmd = cmd }))
-	require("zephyr.process").run(cmd, {
+	r.proc = require("zephyr.process").run(cmd, {
 		cwd = app.dir,
 		env = env,
+		group = true,
 		on_stdout = on_line("stdout"),
 		on_stderr = on_line("stderr"),
 	}, function(res)
@@ -159,8 +182,9 @@ function M.run(app, config, opts)
 			on_line("stderr")(res.stderr) -- west could not be started
 		end
 		local result = vim.tbl_extend("force", info, {
-			ok = res.code == 0,
+			ok = res.code == 0 and (res.signal or 0) == 0 and not r.stopped,
 			code = res.code,
+			stopped = r.stopped == true,
 			duration = (vim.uv.hrtime() - started) / 1e9,
 		})
 		events.emit("FlashFinished", result)

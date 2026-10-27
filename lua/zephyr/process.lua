@@ -27,6 +27,45 @@ end
 ---@class zephyr.ProcessOpts: vim.SystemOpts
 ---@field on_stdout? fun(line: string) called on the main loop for each stdout line
 ---@field on_stderr? fun(line: string) called on the main loop for each stderr line
+---@field group? boolean run in its own process group, so kill() also stops what it started
+---(west's cmake and ninja); such commands are stopped when Neovim exits
+
+-- Process groups started with `group = true` that are still running.
+local groups = {}
+
+local function kill_group(proc)
+	if proc.pid then
+		local ok, res = pcall(vim.uv.kill, -proc.pid, "sigterm")
+		if ok and res == 0 then
+			return
+		end
+	end
+	pcall(proc.kill, proc, "sigterm")
+end
+
+---Stop a process started by run(): its whole process group when it has one.
+---@param proc vim.SystemObj|nil
+function M.kill(proc)
+	if not proc then
+		return
+	end
+	if groups[proc] then
+		kill_group(proc)
+	else
+		pcall(proc.kill, proc, "sigterm")
+	end
+end
+
+local function watch_exit()
+	vim.api.nvim_create_autocmd("VimLeavePre", {
+		group = vim.api.nvim_create_augroup("zephyr_process_groups", { clear = true }),
+		callback = function()
+			for proc in pairs(groups) do
+				kill_group(proc)
+			end
+		end,
+	})
+end
 
 ---Run a command without blocking; `on_exit` gets the vim.SystemCompleted result
 ---on the main loop. With `on_stdout`/`on_stderr` the output is also streamed
@@ -37,6 +76,11 @@ end
 ---@return vim.SystemObj|nil proc nil when the command could not be started
 function M.run(cmd, opts, on_exit)
 	opts = vim.tbl_extend("force", { text = true }, opts or {})
+	local group = opts.group
+	opts.group = nil
+	if group then
+		opts.detach = true
+	end
 	local streams, flushers = {}, {}
 	for _, name in ipairs({ "stdout", "stderr" }) do
 		local on_line = opts["on_" .. name]
@@ -59,7 +103,13 @@ function M.run(cmd, opts, on_exit)
 		end
 	end
 
+	local proc_ref
 	local ok, proc = pcall(vim.system, cmd, opts, function(res)
+		if proc_ref then
+			vim.schedule(function()
+				groups[proc_ref] = nil
+			end)
+		end
 		for _, flush in ipairs(flushers) do
 			flush()
 		end
@@ -75,6 +125,13 @@ function M.run(cmd, opts, on_exit)
 			on_exit({ code = -1, signal = 0, stdout = "", stderr = tostring(proc) })
 		end)
 		return nil
+	end
+	if group then
+		if next(groups) == nil then
+			watch_exit()
+		end
+		groups[proc] = true
+		proc_ref = proc
 	end
 	return proc
 end

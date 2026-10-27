@@ -1,4 +1,6 @@
--- Detects Drift: projects whose checkout is not on the revision the Manifest names.
+-- Detects Drift: projects whose checkout is not on the revision the Manifest
+-- names, and Pin mismatches: projects the Manifest pins differently from a
+-- Manifest it imports.
 -- Portable across west versions: list projects with `west list`, then compare
 -- `HEAD` with `manifest-rev` (set by the last `west update`) in each checkout.
 local process = require("zephyr.process")
@@ -100,16 +102,34 @@ local function each_limited(items, limit, fn, on_all)
 	start()
 end
 
----Find drifted projects in `workspace` without blocking. Fires
----`ZephyrDriftDetected` ({ workspace, projects }) when any project drifted.
+---Pin mismatches of `workspace` (see zephyr.manifest.pin_mismatches); never raises.
 ---@param workspace zephyr.Workspace
----@param cb fun(drifted: zephyr.DriftedProject[]|nil, err: string|nil) drifted is nil when west fails
+---@return zephyr.PinMismatch[]
+function M.pin_mismatches(workspace)
+	if not workspace.manifest_file then
+		return {}
+	end
+	local ok, found = pcall(require("zephyr.manifest").pin_mismatches, workspace)
+	return ok and found or {}
+end
+
+---Find drifted projects and Pin mismatches in `workspace` without blocking.
+---Fires `ZephyrDriftDetected` ({ workspace, projects, pin_mismatches }) when
+---any project drifted or is pinned differently by an imported Manifest. Pin
+---mismatches are only reported; they never block anything.
+---@param workspace zephyr.Workspace
+---@param cb fun(drifted: zephyr.DriftedProject[]|nil, err: string|nil, mismatches: zephyr.PinMismatch[])
+---drifted is nil when west fails
 function M.check(workspace, cb)
 	cb = cb or function() end
+	local mismatches = M.pin_mismatches(workspace)
 	process.run({ "west", "list", "-f", M.list_format }, { cwd = workspace.topdir }, function(res)
 		if res.code ~= 0 then
 			local err = vim.trim((res.stderr or "") ~= "" and res.stderr or res.stdout or "")
-			return cb(nil, err ~= "" and err or "west list failed")
+			if #mismatches > 0 then
+				events.emit("DriftDetected", { workspace = workspace.topdir, projects = {}, pin_mismatches = mismatches })
+			end
+			return cb(nil, err ~= "" and err or "west list failed", mismatches)
 		end
 		local projects = vim.tbl_filter(function(p)
 			return p.cloned
@@ -118,10 +138,13 @@ function M.check(workspace, cb)
 			local drifted = vim.tbl_filter(function(r)
 				return r ~= false
 			end, results)
-			if #drifted > 0 then
-				events.emit("DriftDetected", { workspace = workspace.topdir, projects = drifted })
+			if #drifted > 0 or #mismatches > 0 then
+				events.emit(
+					"DriftDetected",
+					{ workspace = workspace.topdir, projects = drifted, pin_mismatches = mismatches }
+				)
 			end
-			cb(drifted, nil)
+			cb(drifted, nil, mismatches)
 		end)
 	end)
 end
