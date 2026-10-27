@@ -29,38 +29,57 @@ M.VERSION = 1
 ---@field cmake_args string[] extra CMake arguments, passed after `--`
 ---@field toolchain zephyr.ToolchainRef|nil nil means the default Toolchain
 
----Fields whose change needs CMake to configure again.
-M.reconfigure_fields = {
-	"board",
-	"conf_files",
-	"extra_conf_files",
-	"overlays",
-	"snippets",
-	"sysbuild",
-	"optimization",
-	"board_roots",
-	"cmake_args",
-	"toolchain",
-}
+---@class zephyr.SettingsField
+---@field name string settings field
+---@field kind "string"|"list"|"bool"|"toolchain"
+---@field cmake? string CMake cache variable it is read from and passed as; nil when west takes it as a flag
+---@field aliases? string[] older cache variables that mean the same
+---@field paths? "app"|"topdir" values are paths relative to the App or the Workspace topdir
+---@field reconfigure? boolean a change needs CMake to configure again
+---@field default? any value when unset
 
-M.list_fields = { "conf_files", "extra_conf_files", "overlays", "snippets", "board_roots", "cmake_args" }
+---Every Build configuration setting, in the order the edit buffer shows them and
+---`west build` gets them. Board (`-b`), snippets (`-S`), sysbuild, the optimisation
+---level and the Toolchain are not `-D` variables; `build.command` handles them by name.
+---@type zephyr.SettingsField[]
+M.fields = {
+	{ name = "board", kind = "string", reconfigure = true },
+	{ name = "build_dir", kind = "string" },
+	{ name = "conf_files", kind = "list", cmake = "CONF_FILE", paths = "app", reconfigure = true },
+	{
+		name = "extra_conf_files",
+		kind = "list",
+		cmake = "EXTRA_CONF_FILE",
+		aliases = { "OVERLAY_CONFIG" },
+		paths = "app",
+		reconfigure = true,
+	},
+	{ name = "overlays", kind = "list", cmake = "EXTRA_DTC_OVERLAY_FILE", paths = "app", reconfigure = true },
+	{ name = "snippets", kind = "list", reconfigure = true },
+	{ name = "sysbuild", kind = "bool", default = true, reconfigure = true },
+	{ name = "optimization", kind = "string", reconfigure = true },
+	{ name = "board_roots", kind = "list", cmake = "BOARD_ROOT", paths = "topdir", reconfigure = true },
+	{ name = "cmake_args", kind = "list", reconfigure = true },
+	{ name = "toolchain", kind = "toolchain", reconfigure = true },
+}
 
 ---Settings with every field present.
 ---@param s table
 ---@return zephyr.BuildSettings
 function M.normalize(s)
 	local out = vim.deepcopy(s or {})
-	for _, f in ipairs(M.list_fields) do
-		out[f] = type(out[f]) == "table" and vim.tbl_values(out[f]) or {}
-	end
-	if out.sysbuild == nil then
-		out.sysbuild = true
+	for _, f in ipairs(M.fields) do
+		local v = out[f.name]
+		if f.kind == "list" then
+			out[f.name] = type(v) == "table" and vim.tbl_values(v) or {}
+		elseif f.kind == "toolchain" and (type(v) ~= "table" or not v.provider) then
+			out[f.name] = nil
+		elseif v == nil then
+			out[f.name] = f.default
+		end
 	end
 	if out.optimization == "" or out.optimization == "default" then
 		out.optimization = nil
-	end
-	if type(out.toolchain) ~= "table" or not out.toolchain.provider then
-		out.toolchain = nil
 	end
 	return out
 end
@@ -118,6 +137,42 @@ function M.absolute(base, path)
 		return vim.fs.normalize(path)
 	end
 	return vim.fs.normalize(vim.fn.simplify(base .. "/" .. path))
+end
+
+---Directory the paths of `field` are relative to, or nil when its values are not paths.
+---@param app zephyr.App
+---@param field zephyr.SettingsField
+---@return string|nil
+function M.base(app, field)
+	if field.paths == "app" then
+		return app.dir
+	elseif field.paths == "topdir" then
+		return M.root(app)
+	end
+end
+
+---The values of list `field` as stored in settings, absolute when they are paths.
+---@param app zephyr.App
+---@param field zephyr.SettingsField
+---@param values string[]
+---@return string[]
+function M.absolute_list(app, field, values)
+	local base = M.base(app, field)
+	return vim.tbl_map(function(v)
+		return base and M.absolute(base, v) or v
+	end, values or {})
+end
+
+---Absolute values of list `field` as stored in settings: relative when they are paths.
+---@param app zephyr.App
+---@param field zephyr.SettingsField
+---@param values string[]
+---@return string[]
+function M.relative_list(app, field, values)
+	local base = M.base(app, field)
+	return vim.tbl_map(function(v)
+		return base and M.relative(base, v) or v
+	end, values or {})
 end
 
 ---The App's key in the settings file: its path relative to the root.

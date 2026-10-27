@@ -48,7 +48,7 @@ describe("Build configuration settings", function()
 		assert.are.equal("../nrflib/x.conf", settings.relative(app.dir, topdir .. "/nrflib/x.conf"))
 		assert.are.equal(topdir .. "/nrflib/x.conf", settings.absolute(app.dir, "../nrflib/x.conf"))
 		local cfg = build_config.new(app, { board = "a/b", overlays = { "app.overlay" } })
-		assert.are.same({ app.dir .. "/app.overlay" }, cfg.extra_overlays)
+		assert.are.same({ app.dir .. "/app.overlay" }, cfg.overlays)
 	end)
 
 	it("passes every setting on every configure", function()

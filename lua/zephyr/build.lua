@@ -287,11 +287,6 @@ function M.command(config, opts)
 	local settings = require("zephyr.settings")
 	local build_config = require("zephyr.build_config")
 	local app = opts.app or require("zephyr.app").from_dir(config.app_dir)
-	local function abs(list)
-		return vim.tbl_map(function(p)
-			return settings.absolute(app.dir, p)
-		end, list)
-	end
 	vim.list_extend(cmd, { "-b", s.board or config.board })
 	if opts.pristine then
 		vim.list_extend(cmd, { "-p", "always" })
@@ -302,18 +297,15 @@ function M.command(config, opts)
 	end
 	table.insert(cmd, app.dir)
 	local cmake = {}
-	if #s.conf_files > 0 then
-		table.insert(cmake, "-DCONF_FILE=" .. join(abs(s.conf_files)))
-	end
-	if #s.extra_conf_files > 0 then
-		table.insert(cmake, "-DEXTRA_CONF_FILE=" .. join(abs(s.extra_conf_files)))
-	end
-	if #s.overlays > 0 then
-		table.insert(cmake, "-DEXTRA_DTC_OVERLAY_FILE=" .. join(abs(s.overlays)))
-	end
-	local roots = build_config.board_roots(app, s)
-	if #roots > 0 then
-		table.insert(cmake, "-DBOARD_ROOT=" .. join(roots))
+	for _, field in ipairs(settings.fields) do
+		if field.cmake then
+			-- Board roots also get the ones zephyr.nvim adds itself.
+			local values = field.name == "board_roots" and build_config.board_roots(app, s)
+				or settings.absolute_list(app, field, s[field.name])
+			if #values > 0 then
+				table.insert(cmake, ("-D%s=%s"):format(field.cmake, join(values)))
+			end
+		end
 	end
 	local symbol = s.optimization and build_config.optimization_symbols[s.optimization]
 	if symbol then
