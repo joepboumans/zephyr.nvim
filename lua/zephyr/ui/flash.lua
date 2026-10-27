@@ -76,9 +76,6 @@ function M.flash(app, opts)
 	if not cfg or not cfg.exists then
 		return notify("nothing built yet; run :Zephyr build first", vim.log.levels.WARN)
 	end
-	if flash.is_running(cfg.dir) then
-		return notify(cfg.name .. " is busy", vim.log.levels.WARN)
-	end
 	M.resolve_probe(app, function(probe)
 		local follow = output.follow("flash", {
 			stop = function()

@@ -285,8 +285,9 @@ function M.from_settings(app, s, disk)
 	if not cfg.exists then
 		cfg.sysbuild = s.sysbuild
 	end
+	-- Board roots keep what the build directory records: configure adds zephyr.nvim's own too.
 	for _, field in ipairs(settings.fields) do
-		if field.kind == "list" and cfg[field.name] and #s[field.name] > 0 then
+		if field.kind == "list" and field.name ~= "board_roots" and cfg[field.name] and #s[field.name] > 0 then
 			cfg[field.name] = settings.absolute_list(app, field, s[field.name])
 		end
 	end

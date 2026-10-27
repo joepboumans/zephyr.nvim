@@ -139,11 +139,8 @@ function M.absolute(base, path)
 	return vim.fs.normalize(vim.fn.simplify(base .. "/" .. path))
 end
 
----Directory the paths of `field` are relative to, or nil when its values are not paths.
----@param app zephyr.App
----@param field zephyr.SettingsField
----@return string|nil
-function M.base(app, field)
+-- Directory the paths of `field` are relative to, or nil when its values are not paths.
+local function base_of(app, field)
 	if field.paths == "app" then
 		return app.dir
 	elseif field.paths == "topdir" then
@@ -151,25 +148,25 @@ function M.base(app, field)
 	end
 end
 
----The values of list `field` as stored in settings, absolute when they are paths.
+---Stored values of list `field`, made absolute when they are paths.
 ---@param app zephyr.App
 ---@param field zephyr.SettingsField
 ---@param values string[]
 ---@return string[]
 function M.absolute_list(app, field, values)
-	local base = M.base(app, field)
+	local base = base_of(app, field)
 	return vim.tbl_map(function(v)
 		return base and M.absolute(base, v) or v
 	end, values or {})
 end
 
----Absolute values of list `field` as stored in settings: relative when they are paths.
+---Values of list `field` as settings store them: paths made relative to their base.
 ---@param app zephyr.App
 ---@param field zephyr.SettingsField
 ---@param values string[]
 ---@return string[]
 function M.relative_list(app, field, values)
-	local base = M.base(app, field)
+	local base = base_of(app, field)
 	return vim.tbl_map(function(v)
 		return base and M.relative(base, v) or v
 	end, values or {})

@@ -67,7 +67,7 @@ Components fire `User` autocmds named `Zephyr<Event>` (for example `ZephyrBuildF
 Build, flash and update run as Jobs, one at a time per build directory (or Workspace): starting a flash while that Build configuration builds fails with "<name> is busy (building)", and the other way round with "(flashing)".
 
 - `ZephyrBuildStarted`: `app`, `build_dir`, `board`, `cmd`, `toolchain`
-- `ZephyrBuildFinished`: `app`, `build_dir`, `ok`, `code`, `stopped`, `duration` (seconds), `items` (quickfix items)
+- `ZephyrBuildFinished`: `app`, `build_dir`, `board`, `toolchain`, `ok`, `code`, `stopped`, `duration` (seconds), `items` (quickfix items)
 - `ZephyrBuildConfigActivated`: `app`, `build_dir`, `board`
 - `ZephyrBuildConfigImported`: `app`, `build_dir`, `name`, `board`
 - `ZephyrAppActivated`: `workspace`, `app`

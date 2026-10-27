@@ -14,6 +14,7 @@ local M = {}
 ---@field stopped boolean true when stopped through the returned handle
 ---@field duration number seconds
 ---@field output string[] every line, stdout and stderr interleaved
+---@field err? string why west update did not start, e.g. another Job of the Workspace runs
 
 ---Run `west update` without blocking. Fires `ZephyrUpdateStarted` and `ZephyrUpdateFinished`
 ---({ workspace, projects, ok, code, stopped, duration }).
@@ -41,7 +42,7 @@ function M.run(workspace, opts, cb)
 		end,
 	})
 	if not started and cb then
-		cb(false, { ok = false, code = -1, stopped = false, duration = 0, output = { err } })
+		cb(false, { ok = false, code = -1, stopped = false, duration = 0, output = {}, err = err })
 	end
 	return {
 		stop = function()

@@ -116,7 +116,9 @@ function M.update(ws, projects)
 			handle.stop()
 		end,
 		on_exit = function(res)
-			if res.stopped then
+			if res.err then
+				notify(res.err, vim.log.levels.ERROR)
+			elseif res.stopped then
 				notify("west update stopped", vim.log.levels.WARN)
 			elseif res.ok then
 				notify("west update finished")
