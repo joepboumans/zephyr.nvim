@@ -59,9 +59,9 @@ The Active toolchain belongs to a Build configuration, not to the Workspace. `:Z
 
 With no Toolchain chosen, the default is:
 
-1. the NCS toolchain matching the NCS version of the Workspace, read from `<nrf project>/VERSION` (a customised fork may pin a branch or SHA), falling back to a version-looking revision in the Manifest;
+1. the NCS toolchain matching the NCS version of the Workspace, read from `<nrf project>/VERSION` (a customised fork may pin a branch or SHA), falling back to the first version-looking part of the revision in the Manifest (`vt-v2.9.2-v1.5` gives `v2.9.2`);
 2. else the newest NCS toolchain installed;
-3. the Zephyr SDK only when no NCS toolchain is installed.
+3. the Zephyr SDK only when no NCS toolchain is installed, preferring the version in the Workspace's `zephyr/SDK_VERSION` (the Zephyr checkout may be a fork, e.g. `vt-3.7.99-ncs2-2-v1.7`).
 
 If the Toolchain's environment can't be resolved (provider missing, `nrfutil` missing or failing), the build or flash does not start, and the error says why. The first line of the Output window names the Toolchain used.
 
@@ -98,8 +98,7 @@ Every other key works as usual, so the output can be scrolled and searched.
 
 Kconfig and sysbuild failures reach quickfix even without a file and line, as entries with no file, listed first. The Kconfig message itself (not just "command failed with return code: 1") is the entry text. Relative paths in CMake messages (for example `cmake/modules/sysbuild_extensions.cmake`) are resolved against `ZEPHYR_BASE`.
 
-## Open points
+## Settled details
 
-A. **Custom Zephyr in the Manifest.** Joep's Manifest also pins a custom Zephyr. To settle: is it a Zephyr fork (read `zephyr/VERSION` and `zephyr/SDK_VERSION`, default the Zephyr SDK to that version) or a custom Zephyr SDK checked out as a west project (find it in the Workspace and prefer it)?
-
-Settled: the settings file is JSON, because Neovim reads and writes it with `vim.json` while YAML would need a dependency.
+- The settings file is JSON, because Neovim reads and writes it with `vim.json` while YAML would need a dependency.
+- Both NCS and Zephyr may be forks pinned by the Workspace's Manifest, with their own revision names. Versions are always read from the checkouts (`<nrf>/VERSION`, `<zephyr>/VERSION`, `<zephyr>/SDK_VERSION`), never assumed from a release tag.
