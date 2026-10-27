@@ -16,6 +16,10 @@ _Avoid_: west file, version file
 A Zephyr application directory that is built against exactly one Workspace.
 _Avoid_: project, sample (unless it is one)
 
+**Active app**:
+The App of a Workspace that build and flash use when the current file is not inside an App; the one built last, or picked.
+_Avoid_: current project, default app
+
 **Build configuration**:
 One way of building an App: its board, config files, overlays, snippets, sysbuild choice, board roots, extra CMake arguments and Toolchain, plus the build directory it produces; an App can have several, and one is active.
 _Avoid_: build, target, build folder
