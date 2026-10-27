@@ -59,7 +59,7 @@ The Active toolchain belongs to a Build configuration, not to the Workspace. `:Z
 
 With no Toolchain chosen, the default is:
 
-1. the NCS toolchain matching the NCS version of the Workspace (see open point A);
+1. the NCS toolchain matching the NCS version of the Workspace, read from `<nrf project>/VERSION` (a customised fork may pin a branch or SHA), falling back to a version-looking revision in the Manifest;
 2. else the newest NCS toolchain installed;
 3. the Zephyr SDK only when no NCS toolchain is installed.
 
@@ -98,8 +98,8 @@ Every other key works as usual, so the output can be scrolled and searched.
 
 Kconfig and sysbuild failures reach quickfix even without a file and line, as entries with no file, listed first. The Kconfig message itself (not just "command failed with return code: 1") is the entry text. Relative paths in CMake messages (for example `cmake/modules/sysbuild_extensions.cmake`) are resolved against `ZEPHYR_BASE`.
 
-## Open points (recommended defaults, to confirm)
+## Open points
 
-A. **NCS version of a fork.** With a customised NCS fork the Manifest's revision may be a branch or SHA, not a release tag. Recommended: read `<nrf project>/VERSION` in the Workspace (NCS keeps its version there), and fall back to a version-looking revision in the Manifest.
+A. **Custom Zephyr in the Manifest.** Joep's Manifest also pins a custom Zephyr. To settle: is it a Zephyr fork (read `zephyr/VERSION` and `zephyr/SDK_VERSION`, default the Zephyr SDK to that version) or a custom Zephyr SDK checked out as a west project (find it in the Workspace and prefer it)?
 
-B. **Settings file format.** Recommended: JSON, as it is read and written with `vim.json` without extra dependencies. Lua would allow comments but can't be safely rewritten by the edit buffer.
+Settled: the settings file is JSON, because Neovim reads and writes it with `vim.json` while YAML would need a dependency.
