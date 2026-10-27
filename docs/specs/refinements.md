@@ -1,6 +1,6 @@
 # Spec: refinements after first real use
 
-Settled with Joep in a grilling session on 2026-10-27, covering the [known issues](../known-issues.md). Terms are from [CONTEXT.md](../../CONTEXT.md). Nothing here is built yet.
+Settled with Joep in a grilling session on 2026-10-27, covering the [known issues](../known-issues.md). Terms are from [CONTEXT.md](../../CONTEXT.md). Built in tickets #12 to #21 (parent #11).
 
 ## Goals
 
@@ -69,7 +69,7 @@ If the settings name a Toolchain that isn't installed on this machine, a warning
 
 Migration: a Workspace's old Toolchain choice is used once as the Toolchain of its Build configurations, then dropped.
 
-The NCS toolchain provider (nrf-connect.nvim) needs no new API for this; zephyr.nvim asks providers by version as today.
+To stay vendor-neutral, a Toolchain provider may rank its Toolchains for a Workspace (`rank(toolchains, workspace)`); nrf-connect.nvim's NCS toolchain provider ranks by NCS version, and the Zephyr SDK provider is marked as the fallback.
 
 ## 4. Building from outside the App
 

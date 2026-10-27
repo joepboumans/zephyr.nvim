@@ -1,6 +1,6 @@
 # Known issues
 
-Problems found while using zephyr.nvim (with nrf-connect.nvim) on a real App. Each one lists what happens, the likely causes found by reading the code, and the questions to settle in the next grilling session. Nothing here is fixed yet. How they will be solved is in [the refinements spec](specs/refinements.md).
+Problems found while using zephyr.nvim (with nrf-connect.nvim) on a real App. Each one lists what happens, the likely causes found by reading the code, and the questions to settle in the next grilling session. How they are solved is in [the refinements spec](specs/refinements.md), built in tickets #12 to #21; this file keeps the original reports.
 
 Issues 1 to 3 were found 2026-10-25 on Linux, building `happy-bots/app` against a customised NCS Workspace with an NCS toolchain in `~/ncs/toolchains/b77d8c1312`. Issues 4 to 6 were found 2026-10-27 on the `vt-wockel-sdk` Workspace.
 
