@@ -17,7 +17,7 @@ A Zephyr application directory that is built against exactly one Workspace.
 _Avoid_: project, sample (unless it is one)
 
 **Build configuration**:
-One build directory of an App, with the board and config files recorded in it; an App can have several, and one is active.
+One way of building an App: its board, config files, overlays, snippets, sysbuild choice, board roots, extra CMake arguments and Toolchain, plus the build directory it produces; an App can have several, and one is active.
 _Avoid_: build, target, build folder
 
 **Pristine build**:
@@ -48,8 +48,8 @@ A source of Toolchains that can be found, installed and activated; zephyr.nvim s
 _Avoid_: toolchain plugin, backend
 
 **Active toolchain**:
-The Toolchain whose environment is used for builds of an App.
-_Avoid_: current toolchain, selected SDK
+The Toolchain a Build configuration is built, flashed and indexed with; chosen per Build configuration, else a default picked from what is installed.
+_Avoid_: current toolchain, selected SDK, workspace toolchain
 
 **Probe**:
 A debug adapter connected to a target board, identified by its serial number; only J-Link is supported.
