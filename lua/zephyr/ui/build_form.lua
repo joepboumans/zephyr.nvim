@@ -318,7 +318,12 @@ local function save(form)
 	form.cfg = cfg
 	vim.bo[form.buf].modified = false
 	if form.on_save then
-		form.on_save(cfg, old)
+		-- Not from inside BufWriteCmd: a picker opened there (the pristine-build
+		-- question) gets no autocmds of its own, so pickers such as Telescope or
+		-- Snacks show but can't be used. Run it once `:w` has finished.
+		vim.schedule(function()
+			form.on_save(cfg, old)
+		end)
 	end
 	return true
 end
