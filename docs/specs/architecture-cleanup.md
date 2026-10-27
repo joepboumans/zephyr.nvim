@@ -7,7 +7,7 @@ From the architecture review of 2026-10-27 (candidates 1, 2 and 3). Terms are fr
 - Each piece of knowledge lives in one module: how a setting becomes a `west build` argument, how a west command is run and stopped, how a file is read.
 - Adding a Build configuration setting is one table row, not edits in six places.
 - Build, flash and update share one way of running a west command, so a fix to stopping or output lands once.
-- Leftovers from earlier versions are gone.
+- Leftover code (stubs, copies, a bad merge) is gone.
 
 ## Non-goals
 
@@ -85,17 +85,17 @@ Everything listed in the table above loops over `settings.fields` instead of nam
 A new module `zephyr.job` runs one west command as a **Job** (new CONTEXT.md term). Its interface:
 
 ```lua
--- Start `cmd`. `key` identifies the Job (a build directory, or a Workspace topdir for update);
--- only one Job per kind and key runs at a time.
-job.start(kind, key, cmd, {
+-- Start `cmd` for `dir`: a build directory (build, flash) or a Workspace topdir (update).
+-- One Job per directory runs at a time.
+job.start(dir, cmd, {
   cwd = ..., env = ...,
   event = "Build",            -- fires Zephyr<event>Started / Zephyr<event>Finished
   data = { ... },             -- merged into both events' ev.data
   on_start = fun(info), on_output = fun(line, stream), on_exit = fun(result),
 }) --> started: boolean, err: string|nil
 
-job.is_running(kind, key) --> boolean
-job.stop(kind, key)       --> boolean   -- on_exit still runs, with stopped = true
+job.is_running(dir) --> boolean
+job.stop(dir)       --> boolean   -- on_exit still runs, with stopped = true
 ```
 
 `result` holds `ok`, `code`, `stopped`, `duration` and `output` (every line). `job` uses `process.run` with `group = true`, so stopping also stops the tools west starts (cmake, ninja, the flash runner).
@@ -108,13 +108,15 @@ Each component keeps only what is its own:
 
 Their public functions (`run`, `stop`, `is_running`, `update.run`'s handle) and their events stay as they are.
 
+One behaviour change: because a Job is keyed by directory, a build and a flash of the same Build configuration can no longer run at the same time. Starting one while the other runs fails with "<name> is busy (building)" or "(flashing)", and `build.is_running(dir)` / `flash.is_running(dir)` report any Job on that directory.
+
 In the Default UI, `ui/output` gets a `follow(name, opts)` helper that returns `on_start`, `on_output` and `on_exit` callbacks. They open the Output window with the Toolchain and command as its title, append lines, and on exit write the `[done|failed|stopped in N s]` line and wire `q` to stop. `ui/build`, `ui/flash` and `ui/update` use it and keep only their own notifications and quickfix handling.
 
 RTT stays as it is: its viewer is a terminal job, not a streamed Job.
 
 ### Tests
 
-- New `job_spec`: start, output lines, stop while running, a command that can't start, and one Job per key. `process.run` is stubbed, as in the other specs.
+- New `job_spec`: start, output lines, stop while running, a command that can't start, and one Job per directory (a flash refused while a build of the same directory runs). `process.run` is stubbed, as in the other specs.
 - The stop and exit cases in `build_spec`, `flash_spec` and `update_spec` that only test the copied plumbing move to `job_spec`. The specs keep their command and event tests.
 
 ## 3. Clean-up: leftovers and copies
@@ -129,14 +131,13 @@ No behaviour change.
    Writes stay where they are.
 3. **Subcommand actions**: each `ui/*.lua` keeps its `M.actions`. `commands.lua` completes from those (looking up the UI module when completing) instead of keeping its own copy, and checks the action once before calling the subcommand. The four copies of "unknown action '%s'; use …" in the UI modules go. Drop the unused `impl == false` "not implemented yet" path.
 4. **`notify`**: the eight `local function notify` copies in `ui/` become one `require("zephyr.ui.notify")`, with the same "zephyr: " prefix.
-5. **Migrations**: remove the two upgrade paths from versions before the settings file, and their tests:
-   - the old personal-state Build configuration in `build_config.active`
-   - the per-Workspace Toolchain (`toolchain.migrate`)
 
-   Only do this after Joep has opened each Workspace once with the current version (see open questions).
+Migrations stay: the upgrade paths in `build_config.active` (old personal-state Build configuration) and `toolchain.migrate` (per-Workspace Toolchain) keep running for Workspaces that haven't been opened since the settings file came in, and there will always be some.
 
-## Open questions
+## Settled
 
-- Part 3.5: have all of Joep's Workspaces been opened with the current version, so the migrations have run? If not, keep them one more release.
-- Part 1: is renaming `zephyr.BuildConfig.overlays` / `extra_overlays` acceptable, or should the old names stay as aliases for one release? nrf-connect.nvim doesn't read them.
-- Part 2: should the Job `kind`/`key` pair be one string (e.g. `"build:" .. dir`)? A pair keeps `is_running` readable; a string is simpler.
+Settled with Joep on 2026-10-27:
+
+- The migrations stay (part 3); old Workspaces keep turning up.
+- `zephyr.BuildConfig` fields are renamed without aliases (part 1).
+- A Job is identified by its directory alone (part 2).
