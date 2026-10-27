@@ -2,7 +2,7 @@
 
 Problems found while using zephyr.nvim (with nrf-connect.nvim) on a real App. Each one lists what happens, the likely causes found by reading the code, and the questions to settle in the next grilling session. Nothing here is fixed yet.
 
-Found 2026-10-25 on Linux, building `happy-bots/app` against a customised NCS Workspace with an NCS toolchain in `~/ncs/toolchains/b77d8c1312`.
+Issues 1 to 3 were found 2026-10-25 on Linux, building `happy-bots/app` against a customised NCS Workspace with an NCS toolchain in `~/ncs/toolchains/b77d8c1312`. Issues 4 to 6 were found 2026-10-27 on the `vt-wockel-sdk` Workspace.
 
 ## 1. `:Zephyr build` and `:Zephyr flash` fail with `No module named 'ninja'`
 
@@ -18,6 +18,8 @@ FATAL ERROR: command exited with status 1: /usr/bin/cmake --build /home/joep/pro
 ```
 
 `:Zephyr flash` fails the same way, because `west flash` rebuilds first.
+
+Update 2026-10-27: picking a better NCS toolchain with `:Zephyr sdk select` makes the error go away. So the environment works once the right toolchain is active; the open problem is that the default choice was wrong and nothing said so.
 
 What the output tells us:
 
@@ -89,3 +91,72 @@ Questions for the grilling session:
 
 - Should a Build configuration own its extra CMake arguments (board root, extra conf files, overlays, `-D` flags), like VS Code's build configurations do, so a pristine build can recreate it?
 - Should the plugin know about board roots (a setting, or read from the Workspace) so `:Zephyr build new` also lists custom boards?
+
+## 4. Sysbuild configure fails on Kconfig for a Build configuration made by zephyr.nvim
+
+What happens: with a working toolchain, configuring the `vt_connect` image fails. The quickfix list shows:
+
+```
+vt-wockel-sdk/zephyr/CMakeLists.txt|952 warning| No SOURCES given to Zephyr library: drivers__charger
+vt-wockel-sdk/zephyr/CMakeLists.txt|952 warning| No SOURCES given to Zephyr library: drivers__serial
+vt-wockel-sdk/zephyr/CMakeLists.txt|952 warning| No SOURCES given to Zephyr library: ..__wockel__drivers__gpio
+vt-wockel-sdk/zephyr/CMakeLists.txt|2133 warning| __ASSERT() statements are globally ENABLED
+vt-wockel-sdk/zephyr/cmake/modules/kconfig.cmake|396 error| command failed with return code: 1
+cmake/modules/sysbuild_extensions.cmake|514 error| CMake configure failed for Zephyr project: vt_connect
+```
+
+Building a Build configuration that the nRF Connect VS Code extension created works.
+
+What the output tells us:
+
+- `kconfig.cmake:396` is where CMake runs Kconfig to merge the config fragments. It failing means Kconfig rejected the configuration, for example an assignment to an undefined symbol, a value outside its range, or warnings turned into errors.
+- The "No SOURCES given" warnings for drivers (including the Workspace's own `wockel` GPIO driver) say the Kconfig options that pull those sources in are off, which fits a configuration that is missing fragments.
+- The quickfix list does not show the reason. Kconfig prints its message without a file and line (or in a form `build.parse()` doesn't match), so it is only in the Output window.
+- `sysbuild_extensions.cmake` has no absolute path, so its quickfix item points at the wrong file.
+
+Likely causes, most likely first:
+
+1. **zephyr.nvim passes less than VS Code does.** `:Zephyr build new` only records a board; the first build runs `west build -d <dir> -b <board> <app>`. A VS Code build configuration usually also passes extra Kconfig fragments (`EXTRA_CONF_FILE`), devicetree overlays (`EXTRA_DTC_OVERLAY_FILE`), a non-default `prj_<name>.conf` (`CONF_FILE` or `FILE_SUFFIX`), snippets (`-S`), sysbuild settings (`SB_CONF_FILE`, `--sysbuild`), a board root, and an optimisation level. Any of those missing would leave Kconfig symbols unset or undefined.
+2. **The custom board or module isn't found the same way.** If the board, or the module that defines the `wockel` drivers' Kconfig, is added through a board root or `ZEPHYR_EXTRA_MODULES` passed by VS Code, Kconfig sees an assignment to a symbol that doesn't exist (same root as issue 3).
+3. **A different board name.** VS Code may have configured with a fully-qualified HWMv2 target (`board/soc/cpu`) or a revision, while the one picked from `west boards` (or typed in) differs, so the board-specific `.conf` fragments don't apply.
+
+To check next time:
+
+- The Kconfig message just before the `kconfig.cmake` error in the Output window.
+- Diff the CMake cache of the VS Code build directory against ours: `grep -E 'BOARD|CONF_FILE|OVERLAY|SNIPPET|BOARD_ROOT|EXTRA_MODULES|FILE_SUFFIX|SB_' build*/CMakeCache.txt build*/vt_connect/CMakeCache.txt`.
+- `build_info.yml` in the VS Code build directory (Zephyr 3.7+ records the board and CMake arguments there).
+- The build configuration in the VS Code workspace settings, if it is stored there.
+
+Questions for the grilling session:
+
+- Should a Build configuration hold everything VS Code's does (conf files, overlays, snippets, sysbuild on/off, board root, extra CMake arguments), and is VS Code's build configuration the model to copy?
+- Should zephyr.nvim be able to import a VS Code build configuration, or is reading its build directory enough?
+- Should Kconfig and sysbuild failures without a location still appear in quickfix, as an item without a file?
+
+## 5. A Build configuration can't be edited after it is created
+
+What happens: once `:Zephyr build new` has made a Build configuration, there is no way to change it (board, conf files, overlays, and so on).
+
+Where it comes from: `build_config.new()` takes only a board (and a directory), and the Build configuration is otherwise read back from the CMake cache. There is no `edit` action in `:Zephyr build`, and nothing stores settings for a Build configuration apart from the board of one not yet built.
+
+Questions for the grilling session:
+
+- What should be editable: the board, conf files, overlays, snippets, sysbuild, extra CMake arguments, the build directory name?
+- Where does an edit live before the next build: in plugin state, or straight in the build directory (which means a pristine build to apply most changes)?
+- Should editing a Build configuration trigger a pristine build automatically, ask, or wait for the next `:Zephyr build pristine`?
+- Edit through a sequence of pickers and prompts, or by opening a small editable buffer (like a form)?
+- Can you edit a Build configuration that VS Code created, and must the result still work in VS Code?
+
+## 6. Link a Build configuration to both a Zephyr version and an NCS version
+
+What Joep asked: a Build configuration should link both the Zephyr version and the NCS version; today it only links the NCS one.
+
+How it works now: the glossary says the NCS version is whatever the Workspace's Manifest pins, and the Active toolchain is chosen per Workspace, not per Build configuration. A Build configuration only records its board and what CMake cached. So nothing is linked to a Build configuration today; "only the NCS one" probably refers to `:Zephyr sdk select` listing only NCS toolchains.
+
+This conflicts with the current model, so it needs settling before any code:
+
+- Which "Zephyr version" is meant: the Zephyr revision in the Workspace (set by the Manifest), or the Zephyr SDK version (the Toolchain)?
+- Which "NCS version" is meant: the NCS revision the Manifest pins, or the NCS toolchain?
+- Should the Active toolchain move from the Workspace to the Build configuration, so two Build configurations of one App can use different toolchains?
+- If a Build configuration names a Zephyr or NCS revision that differs from what the Manifest pins, is that Drift, an error, or a reason to switch Workspace?
+- With an NCS fork, is the Zephyr SDK ever used, or always the NCS toolchain?
