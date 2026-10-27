@@ -79,8 +79,12 @@ _Avoid_: log window, serial terminal
 The RTT output as data that other UIs can consume to build their own RTT viewer.
 _Avoid_: RTT log, RTT buffer
 
+**Job**:
+A west command zephyr.nvim runs in the background for a Build configuration or Workspace (a build, flash or update), with streamed output, a stop, and Started/Finished events.
+_Avoid_: task, process (that is the OS process underneath)
+
 **Output window**:
-The split of the Default UI that shows the streamed output of a build, flash or update.
+The split of the Default UI that shows the streamed output of a Job.
 _Avoid_: log window, terminal (unless it is the RTT viewer)
 
 **Default UI**:
