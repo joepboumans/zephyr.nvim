@@ -79,6 +79,50 @@ describe("build.parse", function()
 	end)
 end)
 
+describe("build.parse on configure failures", function()
+	local zephyr_base = vim.fn.getcwd() .. "/tests/fixtures/ncsws/zephyr"
+	local items
+
+	before_each(function()
+		items = build.parse(h.output("kconfig.txt"), {
+			cwd = "/ws/app/build/vt_connect",
+			source_dir = "/ws/app",
+			zephyr_base = zephyr_base,
+		})
+	end)
+
+	it("puts the Kconfig message first, also without a file and line", function()
+		assert.is_nil(items[1].filename)
+		assert.are.equal("E", items[1].type)
+		assert.matches("^WOCKEL_GPIO %(defined at .*%) was assigned the value 'y' but got the value 'n'", items[1].text)
+		assert.are.same(
+			{ filename = "/ws/app/prj.conf", lnum = 12, col = 0, type = "E", text = "attempt to assign the value 'y' to the undefined symbol VT_CONNECT_FEATURE" },
+			items[2]
+		)
+	end)
+
+	it("names the failing sysbuild image, resolving cmake/modules into the Workspace's Zephyr", function()
+		assert.are.equal("CMake configure failed for Zephyr project: vt_connect", items[3].text)
+		assert.are.equal(zephyr_base .. "/share/sysbuild/cmake/modules/sysbuild_extensions.cmake", items[3].filename)
+		assert.are.equal(514, items[3].lnum)
+	end)
+
+	it("gives Kconfig's CMake error the Kconfig message instead of the return code", function()
+		assert.are.equal("/ws/zephyr/cmake/modules/kconfig.cmake", items[4].filename)
+		assert.matches("^Kconfig failed: WOCKEL_GPIO", items[4].text)
+		assert.are.equal("No SOURCES given to Zephyr library: drivers__charger", items[5].text)
+		assert.are.equal(5, #items)
+	end)
+
+	it("resolves cmake/modules into Zephyr even when the file is not there", function()
+		local got = build.parse({ "CMake Error at cmake/modules/sysbuild_images.cmake:20 (message):", "  boom" }, {
+			source_dir = "/ws/app",
+			zephyr_base = "/nowhere/zephyr",
+		})
+		assert.are.equal("/nowhere/zephyr/share/sysbuild/cmake/modules/sysbuild_images.cmake", got[1].filename)
+	end)
+end)
+
 describe("build.command", function()
 	local existing = { dir = "/a/build", exists = true, board = "nrf52dk/nrf52832", app_dir = "/a" }
 	local new = { dir = "/a/build_x", exists = false, board = "x/y", app_dir = "/a" }

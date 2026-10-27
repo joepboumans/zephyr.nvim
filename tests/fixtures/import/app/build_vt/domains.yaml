@@ -1,0 +1,7 @@
+default: app
+build_dir: @APP@/app/build_vt
+domains:
+  - name: app
+    build_dir: @APP@/app/build_vt/app
+flash_order:
+  - app

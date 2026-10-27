@@ -16,13 +16,29 @@ _Avoid_: west file, version file
 A Zephyr application directory that is built against exactly one Workspace.
 _Avoid_: project, sample (unless it is one)
 
+**Active app**:
+The App of a Workspace that build and flash use when the current file is not inside an App; the one built last, or picked.
+_Avoid_: current project, default app
+
 **Build configuration**:
-One build directory of an App, with the board and config files recorded in it; an App can have several, and one is active.
+One way of building an App: its board, config files, overlays, snippets, sysbuild choice, board roots, extra CMake arguments and Toolchain, plus the build directory it produces; an App can have several, and one is active.
 _Avoid_: build, target, build folder
+
+**Pristine build**:
+A build that wipes a Build configuration's directory and configures it again from scratch, so only what the Build configuration itself records survives.
+_Avoid_: clean build, rebuild
+
+**Board root**:
+A directory that holds board definitions, searched in addition to Zephyr's own boards; custom boards are found through one.
+_Avoid_: board dir, boards folder
 
 **Drift**:
 The state where a project checked out in the Workspace is not on the revision its Manifest names.
 _Avoid_: out of date, mismatch
+
+**Pin mismatch**:
+The state where the Manifest pins a project (such as Zephyr) at another revision than a Manifest it imports (such as NCS's) pins it.
+_Avoid_: drift (that is checkout vs. Manifest), version conflict
 
 **Component**:
 One self-contained part of the plugin's Lua API, such as build, flash or RTT, that UIs are assembled from.
@@ -40,8 +56,8 @@ A source of Toolchains that can be found, installed and activated; zephyr.nvim s
 _Avoid_: toolchain plugin, backend
 
 **Active toolchain**:
-The Toolchain whose environment is used for builds of an App.
-_Avoid_: current toolchain, selected SDK
+The Toolchain a Build configuration is built, flashed and indexed with; chosen per Build configuration, else a default picked from what is installed.
+_Avoid_: current toolchain, selected SDK, workspace toolchain
 
 **Probe**:
 A debug adapter connected to a target board, identified by its serial number; only J-Link is supported.
@@ -62,6 +78,10 @@ _Avoid_: log window, serial terminal
 **RTT stream**:
 The RTT output as data that other UIs can consume to build their own RTT viewer.
 _Avoid_: RTT log, RTT buffer
+
+**Output window**:
+The split of the Default UI that shows the streamed output of a build, flash or update.
+_Avoid_: log window, terminal (unless it is the RTT viewer)
 
 **Default UI**:
 The commands and pickers shipped with the plugin, built only on the public API.

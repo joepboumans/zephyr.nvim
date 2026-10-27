@@ -1,0 +1,21 @@
+manifest:
+  remotes:
+    - name: vt
+      url-base: https://example.com/vt
+  defaults:
+    remote: vt
+  projects:
+    - name: nrf
+      repo-path: sdk-nrf
+      revision: vt-v2.9.2-v1.5
+      import:
+        name-allowlist:
+          - zephyr
+          - mcuboot
+    - name: zephyr
+      revision: vt-3.7.99-ncs2-2-v1.7 # our Zephyr fork
+    - name: nrflib
+      revision: main
+  self:
+    path: app
+    # exports nrflib and scripts next to the App

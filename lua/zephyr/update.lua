@@ -11,6 +11,7 @@ local M = {}
 
 ---@class zephyr.UpdateResult
 ---@field code integer exit code of west
+---@field stopped boolean true when stopped through the returned handle
 ---@field output string[] every line, stdout and stderr interleaved
 
 ---Turn chunks from vim.system into whole lines.
@@ -31,10 +32,11 @@ local function line_splitter(stream, on_line)
 end
 
 ---Run `west update` without blocking. Fires `ZephyrUpdateFinished`
----({ workspace, projects, ok, code }).
+---({ workspace, projects, ok, code, stopped }).
 ---@param workspace zephyr.Workspace
 ---@param opts? zephyr.UpdateOpts
 ---@param cb? fun(ok: boolean, result: zephyr.UpdateResult)
+---@return { stop: fun() } handle stops west (and what it started); `cb` still runs, with ok false
 function M.run(workspace, opts, cb)
 	opts = opts or {}
 	local cmd = { "west", "update" }
@@ -60,21 +62,31 @@ function M.run(workspace, opts, cb)
 		end
 	end
 
-	process.run(cmd, { cwd = workspace.topdir, stdout = reader("stdout"), stderr = reader("stderr") }, function(res)
+	local proc, stopped
+	local handle = {
+		stop = function()
+			stopped = true
+			process.kill(proc)
+		end,
+	}
+	local opts_run = { cwd = workspace.topdir, group = true, stdout = reader("stdout"), stderr = reader("stderr") }
+	proc = process.run(cmd, opts_run, function(res)
 		-- Text in res means it was not streamed (e.g. west could not be started).
 		splitters.stdout(type(res.stdout) == "string" and res.stdout or nil, true)
 		splitters.stderr(type(res.stderr) == "string" and res.stderr or nil, true)
-		local ok = res.code == 0
+		local ok = res.code == 0 and (res.signal or 0) == 0 and not stopped
 		events.emit("UpdateFinished", {
 			workspace = workspace.topdir,
 			projects = opts.projects or {},
 			ok = ok,
 			code = res.code,
+			stopped = stopped == true,
 		})
 		if cb then
-			cb(ok, { code = res.code, output = output })
+			cb(ok, { code = res.code, output = output, stopped = stopped == true })
 		end
 	end)
+	return handle
 end
 
 return M

@@ -24,10 +24,37 @@ local function drift_message(drifted)
 	return table.concat(lines, "\n")
 end
 
----`:Zephyr update check`: report Drift, also when there is none.
+---The warning for Pin mismatches, naming both revisions.
+---@param mismatches zephyr.PinMismatch[]
+---@return string
+function M.mismatch_message(mismatches)
+	local lines = {}
+	for _, m in ipairs(mismatches) do
+		table.insert(
+			lines,
+			("%s is pinned at %s by the Manifest but at %s by %s's west.yml (builds still use %s)"):format(
+				m.name,
+				m.revision,
+				m.imported_revision,
+				m.imported_from,
+				m.revision
+			)
+		)
+	end
+	return table.concat(lines, "\n")
+end
+
+local function report_mismatches(mismatches)
+	if mismatches and #mismatches > 0 then
+		notify(M.mismatch_message(mismatches), vim.log.levels.WARN)
+	end
+end
+
+---`:Zephyr update check`: report Drift, also when there is none, and Pin mismatches.
 ---@param ws zephyr.Workspace
 function M.check(ws)
-	zephyr.drift.check(ws, function(drifted, err)
+	zephyr.drift.check(ws, function(drifted, err, mismatches)
+		report_mismatches(mismatches)
 		if not drifted then
 			return notify("drift check failed: " .. err, vim.log.levels.ERROR)
 		end
@@ -39,10 +66,11 @@ function M.check(ws)
 	end)
 end
 
----Check quietly, only telling about Drift that was found.
+---Check quietly, only telling about Drift and Pin mismatches that were found.
 ---@param ws zephyr.Workspace
 function M.check_quiet(ws)
-	zephyr.drift.check(ws, function(drifted)
+	zephyr.drift.check(ws, function(drifted, _, mismatches)
+		report_mismatches(mismatches)
 		if drifted and #drifted > 0 then
 			notify(drift_message(drifted), vim.log.levels.WARN)
 		end
@@ -80,39 +108,33 @@ function M.on_write(path)
 	end
 end
 
--- Scratch buffer that shows the streamed `west update` output.
-local function output_window(ws)
-	local buf = vim.api.nvim_create_buf(false, true)
-	vim.bo[buf].bufhidden = "wipe"
-	pcall(vim.api.nvim_buf_set_name, buf, "zephyr://update/" .. ws.topdir)
-	vim.cmd("botright 12split")
-	local win = vim.api.nvim_get_current_win()
-	vim.api.nvim_win_set_buf(win, buf)
-	vim.cmd("wincmd p")
-	local first = true
-	return function(line)
-		if not vim.api.nvim_buf_is_valid(buf) then
-			return
-		end
-		vim.api.nvim_buf_set_lines(buf, first and 0 or -1, -1, false, { line })
-		first = false
-		if vim.api.nvim_win_is_valid(win) then
-			vim.api.nvim_win_set_cursor(win, { vim.api.nvim_buf_line_count(buf), 0 })
-		end
-	end
-end
-
----Run `west update` with its output in a split.
+---Run `west update`, streaming its output into the Output window.
 ---@param ws zephyr.Workspace
 ---@param projects string[]
 function M.update(ws, projects)
-	notify("running west update" .. (#projects > 0 and (" " .. table.concat(projects, " ")) or "") .. " ...")
-	local append = output_window(ws)
-	zephyr.update(ws, { projects = projects, on_output = append }, function(ok, res)
-		if ok then
+	local output = require("zephyr.ui.output")
+	local cmd = "$ west update" .. (#projects > 0 and (" " .. table.concat(projects, " ")) or "")
+	local handle
+	local function stop()
+		if handle then
+			handle.stop()
+		end
+	end
+	local buf = output.open("update", cmd, { stop = stop })
+	handle = zephyr.update(ws, {
+		projects = projects,
+		on_output = function(line)
+			output.append(buf, line)
+		end,
+	}, function(ok, res)
+		output.finish(stop)
+		output.append(buf, res.stopped and "[stopped]" or (ok and "[done]" or ("[failed, exit " .. res.code .. "]")))
+		if res.stopped then
+			notify("west update stopped", vim.log.levels.WARN)
+		elseif ok then
 			notify("west update finished")
 		else
-			notify(("west update failed (exit %d); see the output split"):format(res.code), vim.log.levels.ERROR)
+			notify(("west update failed (exit %d); see the Output window"):format(res.code), vim.log.levels.ERROR)
 		end
 	end)
 end

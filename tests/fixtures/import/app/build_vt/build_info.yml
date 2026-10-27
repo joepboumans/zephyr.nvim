@@ -1,0 +1,11 @@
+cmake:
+  board:
+    name: nrf5340dk
+    qualifiers: nrf5340/cpuapp
+    revision:
+  sysbuild: true
+version: 0.1.0
+west:
+  command: /usr/bin/west build --build-dir @APP@/app/build_vt @APP@/app --pristine --board nrf5340dk/nrf5340/cpuapp --sysbuild -S rtt-console -- -DNCS_TOOLCHAIN_VERSION=NONE -DEXTRA_CONF_FILE=debug.conf -DEXTRA_DTC_OVERLAY_FILE=app.overlay -DCONFIG_DEBUG_OPTIMIZATIONS=y -DCONFIG_DEBUG_THREAD_INFO=y -DBOARD_ROOT=@APP@/custom
+  topdir: /ws
+  version: 1.2.0

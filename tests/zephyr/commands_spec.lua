@@ -17,7 +17,7 @@ describe(":Zephyr", function()
 	end)
 
 	it("completes build actions", function()
-		assert.are.same({ "pristine", "select", "new" }, commands.complete("", "Zephyr build "))
+		assert.are.same({ "pristine", "select", "new", "edit", "app" }, commands.complete("", "Zephyr build "))
 	end)
 
 	it("completes flash actions", function()

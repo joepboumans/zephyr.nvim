@@ -92,12 +92,45 @@ function M.install(opts, on_done)
 	end)
 end
 
+---The Zephyr SDK version a Workspace's Zephyr asks for, from `<zephyr>/SDK_VERSION`.
+---@param workspace zephyr.Workspace
+---@return string|nil e.g. "0.16.8"
+function M.wanted_version(workspace)
+	local base = workspace and workspace.zephyr_base
+	local fd = base and io.open(base .. "/SDK_VERSION", "r")
+	if not fd then
+		return nil
+	end
+	local version = vim.trim(fd:read("*a"))
+	fd:close()
+	return version ~= "" and (version:gsub("^v", "")) or nil
+end
+
+---Rank SDKs for `workspace`: the one matching `<zephyr>/SDK_VERSION` first, then newest first.
+---@param toolchains zephyr.Toolchain[] newest first, as find() gives them
+---@param workspace zephyr.Workspace
+---@return zephyr.Toolchain[]
+function M.rank(toolchains, workspace)
+	local want = M.wanted_version(workspace)
+	if not want then
+		return toolchains
+	end
+	local first, rest = {}, {}
+	for _, tc in ipairs(toolchains) do
+		table.insert(tc.version == want and first or rest, tc)
+	end
+	return vim.list_extend(first, rest)
+end
+
 M.provider = {
 	name = "zephyr-sdk",
+	-- Vendor toolchains (such as NCS's) come first; the Zephyr SDK is used when none is installed.
+	fallback = true,
 	find = function()
 		return M.find()
 	end,
 	env = M.env,
+	rank = M.rank,
 	install = M.install,
 }
 

@@ -1,5 +1,4 @@
 -- Default UI for `:Zephyr flash [erase]` and `:Zephyr flash probe`.
-local app_mod = require("zephyr.app")
 local build_config = require("zephyr.build_config")
 local flash = require("zephyr.flash")
 local probes = require("zephyr.probes")
@@ -83,21 +82,28 @@ function M.flash(app, opts)
 		return notify("already flashing " .. cfg.name, vim.log.levels.WARN)
 	end
 	M.resolve_probe(app, function(probe)
-		local cmd = flash.command(cfg, { probe = probe, erase = opts.erase })
-		local buf = output.open("flash", "$ " .. table.concat(cmd, " "))
+		local buf
+		local function stop()
+			flash.stop(cfg.dir)
+		end
 		local started, err = flash.run(app, cfg, {
 			probe = probe,
 			erase = opts.erase,
+			on_start = function(info)
+				local title = { require("zephyr.toolchain").describe(info.toolchain), "$ " .. table.concat(info.cmd, " ") }
+				buf = output.open("flash", title, { stop = stop })
+			end,
 			on_output = function(line)
 				output.append(buf, line)
 			end,
 			on_exit = function(res)
-				output.append(
-					buf,
-					("[%s in %.1fs]"):format(res.ok and "done" or ("failed, exit " .. res.code), res.duration)
-				)
+				output.finish(stop)
+				local status = res.stopped and "stopped" or (res.ok and "done" or ("failed, exit " .. res.code))
+				output.append(buf, ("[%s in %.1fs]"):format(status, res.duration))
 				local where = res.probe and (" on " .. res.probe.name) or ""
-				if res.ok then
+				if res.stopped then
+					notify(("flash of %s%s stopped"):format(cfg.name, where), vim.log.levels.WARN)
+				elseif res.ok then
 					notify(("flashed %s%s (%.1fs)"):format(cfg.name, where, res.duration))
 				else
 					notify(("flash of %s%s failed"):format(cfg.name, where), vim.log.levels.ERROR)
@@ -105,7 +111,7 @@ function M.flash(app, opts)
 			end,
 		})
 		if not started then
-			notify(err or "flash did not start", vim.log.levels.WARN)
+			notify(err or "flash did not start", vim.log.levels.ERROR)
 		end
 	end)
 end
@@ -114,20 +120,22 @@ M.actions = { "erase", "probe" }
 
 ---@param args string[]
 function M.run(args)
-	local app = app_mod.find()
-	if not app then
-		return notify("not inside a Zephyr app (no CMakeLists.txt with find_package(Zephyr))", vim.log.levels.ERROR)
-	end
 	local action = args[1]
-	if action == nil then
-		M.flash(app)
-	elseif action == "erase" then
-		M.flash(app, { erase = true })
-	elseif action == "probe" then
-		M.pick(app)
-	else
-		notify(("unknown action '%s'; use %s"):format(action, table.concat(M.actions, "|")), vim.log.levels.ERROR)
+	if action ~= nil and not vim.tbl_contains(M.actions, action) then
+		return notify(
+			("unknown action '%s'; use %s"):format(action, table.concat(M.actions, "|")),
+			vim.log.levels.ERROR
+		)
 	end
+	require("zephyr.ui.app").resolve(function(app)
+		if action == nil then
+			M.flash(app)
+		elseif action == "erase" then
+			M.flash(app, { erase = true })
+		elseif action == "probe" then
+			M.pick(app)
+		end
+	end)
 end
 
 return M
