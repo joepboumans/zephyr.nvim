@@ -3,6 +3,8 @@
 -- quoted and plain scalars, comments and block scalars (`|`, `>`, without
 -- blank lines inside).
 -- Anchors, tags and multiple documents are not supported.
+local fs = require("zephyr.fs")
+
 local M = {}
 
 local function strip_comment(s)
@@ -238,12 +240,10 @@ end
 ---@param path string
 ---@return any|nil value, string|nil err
 function M.read(path)
-	local fd = io.open(path, "r")
-	if not fd then
+	local text = fs.read(path)
+	if not text then
 		return nil, "cannot read " .. path
 	end
-	local text = fd:read("*a")
-	fd:close()
 	local ok, value = pcall(M.decode, text)
 	if not ok then
 		return nil, ("cannot parse %s: %s"):format(path, value)

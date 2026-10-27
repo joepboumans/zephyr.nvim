@@ -1,4 +1,6 @@
 -- The Zephyr SDK Toolchain provider.
+local fs = require("zephyr.fs")
+
 local M = {}
 
 ---Places the Zephyr SDK is installed by default, as listed in Zephyr's getting started guide.
@@ -16,12 +18,7 @@ function M.search_dirs()
 end
 
 local function version_of(dir)
-	local fd = io.open(dir .. "/sdk_version", "r")
-	if not fd then
-		return nil
-	end
-	local version = vim.trim(fd:read("*a"))
-	fd:close()
+	local version = vim.trim(fs.read(dir .. "/sdk_version") or "")
 	return version ~= "" and version or nil
 end
 
@@ -97,12 +94,7 @@ end
 ---@return string|nil e.g. "0.16.8"
 function M.wanted_version(workspace)
 	local base = workspace and workspace.zephyr_base
-	local fd = base and io.open(base .. "/SDK_VERSION", "r")
-	if not fd then
-		return nil
-	end
-	local version = vim.trim(fd:read("*a"))
-	fd:close()
+	local version = vim.trim(base and fs.read(base .. "/SDK_VERSION") or "")
 	return version ~= "" and (version:gsub("^v", "")) or nil
 end
 

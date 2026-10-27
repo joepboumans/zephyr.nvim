@@ -2,6 +2,8 @@
 -- its projects, the revisions they are pinned at, and the Manifests they import.
 local yaml = require("zephyr.yaml")
 
+local fs = require("zephyr.fs")
+
 local M = {}
 
 ---@class zephyr.ManifestProject
@@ -47,12 +49,10 @@ end
 ---@param file string
 ---@return zephyr.Manifest|nil, string|nil err
 function M.read(file)
-	local fd = io.open(file, "r")
-	if not fd then
+	local text = fs.read(file)
+	if not text then
 		return nil, "cannot read " .. file
 	end
-	local text = fd:read("*a")
-	fd:close()
 	local ok, res = pcall(M.parse, text, file)
 	if not ok then
 		return nil, res

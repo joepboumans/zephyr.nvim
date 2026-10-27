@@ -1,4 +1,6 @@
 -- Finds the west Workspace around a path by reading `.west/config`.
+local fs = require("zephyr.fs")
+
 local M = {}
 
 ---@class zephyr.Workspace
@@ -28,16 +30,6 @@ function M.parse_config(text)
 	return out
 end
 
-local function read(path)
-	local fd = io.open(path, "r")
-	if not fd then
-		return nil
-	end
-	local text = fd:read("*a")
-	fd:close()
-	return text
-end
-
 ---Find the Workspace containing `path` (a file or directory).
 ---@param path? string defaults to the current buffer's file, or the cwd for special buffers
 ---@return zephyr.Workspace|nil
@@ -55,7 +47,7 @@ function M.find(path)
 		return nil
 	end
 	local topdir = vim.fs.dirname(west)
-	local config = M.parse_config(read(west .. "/config") or "")
+	local config = M.parse_config(fs.read(west .. "/config") or "")
 	local manifest = config.manifest or {}
 	if not manifest.path then
 		return nil

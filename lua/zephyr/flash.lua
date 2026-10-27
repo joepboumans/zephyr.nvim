@@ -2,6 +2,8 @@
 -- Active toolchain's environment, on the chosen Probe.
 local events = require("zephyr.events")
 
+local fs = require("zephyr.fs")
+
 local M = {}
 
 ---Parse the keys of runners.yaml that flashing needs.
@@ -45,12 +47,10 @@ end
 ---@return string|nil runner, string|nil err
 function M.default_runner(config)
 	local path = M.runners_file(config)
-	local fd = io.open(path, "r")
-	if not fd then
+	local text = fs.read(path)
+	if not text then
 		return nil, "no runners.yaml at " .. path
 	end
-	local text = fd:read("*a")
-	fd:close()
 	local runner = M.parse_runners(text).flash_runner
 	if not runner then
 		return nil, "no flash-runner in " .. path

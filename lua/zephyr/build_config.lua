@@ -7,6 +7,8 @@ local state = require("zephyr.state")
 local events = require("zephyr.events")
 local settings = require("zephyr.settings")
 
+local fs = require("zephyr.fs")
+
 local M = {}
 
 ---@class zephyr.BuildConfig
@@ -26,20 +28,6 @@ local M = {}
 ---@field zephyr_base string|nil
 ---@field settings zephyr.BuildSettings|nil what zephyr.nvim configures it with; these win over the cache
 
-local function read_file(path)
-	local fd = io.open(path, "r")
-	if not fd then
-		return nil
-	end
-	local text = fd:read("*a")
-	fd:close()
-	return text
-end
-
-local function is_dir(path)
-	local st = path and vim.uv.fs_stat(path)
-	return st ~= nil and st.type == "directory"
-end
 
 ---Parse CMakeCache.txt text into `{ KEY = value }`.
 ---@param text string
@@ -60,7 +48,7 @@ end
 ---@param dir string
 ---@return table<string, string>|nil cache, nil when `dir` is not a Zephyr build directory
 local function read_cache(dir)
-	local text = read_file(dir .. "/CMakeCache.txt")
+	local text = fs.read(dir .. "/CMakeCache.txt")
 	if not text then
 		return nil
 	end
@@ -114,19 +102,19 @@ end
 ---@param app_dir? string the App, used when domains.yaml names no default
 ---@return string
 function M.image_dir(dir, app_dir)
-	local text = read_file(dir .. "/domains.yaml")
+	local text = fs.read(dir .. "/domains.yaml")
 	if not text then
 		return dir
 	end
 	local domains = M.parse_domains(text)
 	local name = domains.default
 	for _, d in ipairs(domains.domains) do
-		if d.name == name and is_dir(d.build_dir) then
+		if d.name == name and fs.is_dir(d.build_dir) then
 			return d.build_dir
 		end
 	end
 	name = name or (app_dir and vim.fs.basename(app_dir))
-	if name and is_dir(dir .. "/" .. name) then
+	if name and fs.is_dir(dir .. "/" .. name) then
 		return dir .. "/" .. name
 	end
 	return dir
@@ -236,10 +224,10 @@ function M.board_roots(app, s)
 	end
 	local ws = app.workspace
 	if ws then
-		if is_dir(ws.topdir .. "/boards") then
+		if fs.is_dir(ws.topdir .. "/boards") then
 			add(ws.topdir)
 		end
-		if ws.manifest_dir and is_dir(ws.manifest_dir .. "/boards") then
+		if ws.manifest_dir and fs.is_dir(ws.manifest_dir .. "/boards") then
 			add(ws.manifest_dir)
 		end
 	end
@@ -656,7 +644,7 @@ function M.validate(app, s)
 		end
 	end
 	for _, r in ipairs(s.board_roots or {}) do
-		if not is_dir(settings.absolute(settings.root(app), r)) then
+		if not fs.is_dir(settings.absolute(settings.root(app), r)) then
 			table.insert(errs, ("board_roots: %s is not a directory"):format(r))
 		end
 	end

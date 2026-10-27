@@ -4,6 +4,8 @@
 -- `.gitignore` with `*`, so git ignores it without touching the team's files.
 -- Paths are relative (to the App, board roots to the topdir), so the file
 -- works on another machine.
+local fs = require("zephyr.fs")
+
 local M = {}
 
 M.DIR = ".zephyr"
@@ -127,12 +129,10 @@ end
 ---@param root string
 ---@return { version: integer, apps: table<string, zephyr.BuildSettings[]> }
 function M.load(root)
-	local fd = io.open(M.file(root), "r")
-	if not fd then
+	local text = fs.read(M.file(root))
+	if not text then
 		return { version = M.VERSION, apps = {} }
 	end
-	local text = fd:read("*a")
-	fd:close()
 	local ok, data = pcall(vim.json.decode, text, { luanil = { object = true, array = true } })
 	if not ok or type(data) ~= "table" then
 		return { version = M.VERSION, apps = {} }
