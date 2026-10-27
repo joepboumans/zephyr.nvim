@@ -1,7 +1,11 @@
--- Build configurations of an App: build directories holding a Zephyr
--- CMakeCache.txt (plain or sysbuild), and the active one per App.
+-- Build configurations of an App. Each one owns its settings (board, config
+-- files, overlays, snippets, sysbuild, board roots, CMake arguments, Toolchain;
+-- see zephyr.settings), and has a build directory once it has been configured.
+-- Build directories found without settings (made by VS Code or by hand) are
+-- imported once. Which one is active is personal state.
 local state = require("zephyr.state")
 local events = require("zephyr.events")
+local settings = require("zephyr.settings")
 
 local M = {}
 
@@ -17,7 +21,10 @@ local M = {}
 ---@field extra_conf_files string[] `EXTRA_CONF_FILE`
 ---@field overlays string[] devicetree overlays (`DTC_OVERLAY_FILE`)
 ---@field extra_overlays string[] `EXTRA_DTC_OVERLAY_FILE`
+---@field snippets string[] `SNIPPET`
+---@field board_roots string[] `BOARD_ROOT` as cached
 ---@field zephyr_base string|nil
+---@field settings zephyr.BuildSettings|nil what zephyr.nvim configures it with; these win over the cache
 
 local function read_file(path)
 	local fd = io.open(path, "r")
@@ -170,6 +177,8 @@ function M.read(dir)
 		extra_conf_files = split_list(key("EXTRA_CONF_FILE") or key("OVERLAY_CONFIG")),
 		overlays = split_list(key("DTC_OVERLAY_FILE")),
 		extra_overlays = split_list(key("EXTRA_DTC_OVERLAY_FILE")),
+		snippets = split_list(key("SNIPPET") or key("CACHED_SNIPPET")),
+		board_roots = split_list(nonempty(cache.BOARD_ROOT) or nonempty(image.BOARD_ROOT)),
 		zephyr_base = key("ZEPHYR_BASE"),
 	}
 end
@@ -178,12 +187,12 @@ local function same_dir(a, b)
 	return a and b and vim.fs.normalize(a) == vim.fs.normalize(b)
 end
 
----Build configurations found on disk for `app`: build directories directly in
----the App, or one level deeper (as with `build.dir-fmt = build/{board}`).
----Build directories configured from another App are left out.
+---Build directories found on disk for `app`: directly in the App, or one level
+---deeper (as with `build.dir-fmt = build/{board}`). Those configured from
+---another App are left out.
 ---@param app zephyr.App
----@return zephyr.BuildConfig[] sorted by name, `build` first
-function M.list(app)
+---@return zephyr.BuildConfig[]
+function M.scan(app)
 	local out = {}
 	local function consider(dir)
 		local cfg = M.read(dir)
@@ -202,6 +211,323 @@ function M.list(app)
 					end
 				end
 			end
+		end
+	end
+	return out
+end
+
+-- Board roots -----------------------------------------------------------------
+
+---Board roots passed on configure and to `west boards`, beyond the ones Zephyr
+---finds itself (the App's `boards/`, modules' `board_root`): the topdir when
+---`<topdir>/boards/` exists, the manifest repository when it has `boards/`, and
+---the settings' `board_roots` (relative to the topdir).
+---@param app zephyr.App
+---@param s? zephyr.BuildSettings
+---@return string[] absolute directories
+function M.board_roots(app, s)
+	local out, seen = {}, {}
+	local function add(dir)
+		dir = vim.fs.normalize(dir)
+		if not seen[dir] then
+			seen[dir] = true
+			table.insert(out, dir)
+		end
+	end
+	local ws = app.workspace
+	if ws then
+		if is_dir(ws.topdir .. "/boards") then
+			add(ws.topdir)
+		end
+		if ws.manifest_dir and is_dir(ws.manifest_dir .. "/boards") then
+			add(ws.manifest_dir)
+		end
+	end
+	for _, r in ipairs(s and s.board_roots or {}) do
+		add(settings.absolute(settings.root(app), r))
+	end
+	return out
+end
+
+-- Settings ↔ Build configurations ---------------------------------------------
+
+local function abs_list(base, list)
+	return vim.tbl_map(function(p)
+		return settings.absolute(base, p)
+	end, list or {})
+end
+
+local function rel_list(base, list)
+	return vim.tbl_map(function(p)
+		return settings.relative(base, p)
+	end, list or {})
+end
+
+---A Build configuration that is not on disk yet.
+local function pending(app, dir, board)
+	return {
+		dir = dir,
+		name = vim.fs.basename(dir),
+		exists = false,
+		board = board,
+		app_dir = app.dir,
+		sysbuild = false,
+		image_dir = dir,
+		conf_files = {},
+		extra_conf_files = {},
+		overlays = {},
+		extra_overlays = {},
+		snippets = {},
+		board_roots = {},
+	}
+end
+
+---The Build configuration described by settings `s`, merged with what its build
+---directory records. Settings win where both have a value.
+---@param app zephyr.App
+---@param s zephyr.BuildSettings
+---@param disk? zephyr.BuildConfig|false already read from the build directory
+---@return zephyr.BuildConfig
+function M.from_settings(app, s, disk)
+	s = settings.normalize(s)
+	local dir = settings.absolute(app.dir, s.build_dir)
+	if disk == nil then
+		disk = M.read(dir)
+	end
+	local cfg = disk and vim.deepcopy(disk) or pending(app, dir, s.board)
+	cfg.settings = s
+	cfg.board = s.board or cfg.board
+	cfg.app_dir = cfg.app_dir or app.dir
+	if not cfg.exists then
+		cfg.sysbuild = s.sysbuild
+	end
+	if #s.conf_files > 0 then
+		cfg.conf_files = abs_list(app.dir, s.conf_files)
+	end
+	if #s.extra_conf_files > 0 then
+		cfg.extra_conf_files = abs_list(app.dir, s.extra_conf_files)
+	end
+	if #s.overlays > 0 then
+		cfg.extra_overlays = abs_list(app.dir, s.overlays)
+	end
+	if #s.snippets > 0 then
+		cfg.snippets = vim.deepcopy(s.snippets)
+	end
+	return cfg
+end
+
+---Read `build_info.yml` (Zephyr 3.7+) of a build directory.
+---@param dir string
+---@return table|nil
+function M.build_info(dir)
+	local info = require("zephyr.yaml").read(dir .. "/build_info.yml")
+	return type(info) == "table" and info or nil
+end
+
+---Split a command line into words, honouring single and double quotes.
+---@param line string
+---@return string[]
+function M.split_words(line)
+	local out, word, quote, have = {}, {}, nil, false
+	for c in (line or ""):gmatch(".") do
+		if quote then
+			if c == quote then
+				quote = nil
+			else
+				table.insert(word, c)
+			end
+		elseif c == '"' or c == "'" then
+			quote, have = c, true
+		elseif c:match("%s") then
+			if have or #word > 0 then
+				table.insert(out, table.concat(word))
+			end
+			word, have = {}, false
+		else
+			table.insert(word, c)
+		end
+	end
+	if have or #word > 0 then
+		table.insert(out, table.concat(word))
+	end
+	return out
+end
+
+local optimization_symbols = {
+	debug = "CONFIG_DEBUG_OPTIMIZATIONS",
+	speed = "CONFIG_SPEED_OPTIMIZATIONS",
+	size = "CONFIG_SIZE_OPTIMIZATIONS",
+	none = "CONFIG_NO_OPTIMIZATIONS",
+}
+M.optimization_symbols = optimization_symbols
+
+-- CMake variables that settings fields already cover.
+local covered = {
+	BOARD = true,
+	CONF_FILE = true,
+	EXTRA_CONF_FILE = true,
+	OVERLAY_CONFIG = true,
+	EXTRA_DTC_OVERLAY_FILE = true,
+	BOARD_ROOT = true,
+	SNIPPET = true,
+}
+
+---What a `west build` command line says beyond the cache: snippets (`-S`), the
+---optimisation level and the other CMake arguments after `--`.
+---@param words string[]
+---@return { snippets: string[], optimization: string|nil, cmake_args: string[] }
+function M.parse_west_command(words)
+	local out = { snippets = {}, cmake_args = {} }
+	local after = false
+	local i = 1
+	while i <= #words do
+		local w = words[i]
+		if after then
+			local name, value = w:match("^%-D([%w_]+)[:%w]*=(.*)$")
+			local level
+			for l, sym in pairs(optimization_symbols) do
+				if name == sym and value:lower():match("^y") then
+					level = l
+				end
+			end
+			if level then
+				out.optimization = level
+			elseif not (name and covered[name]) then
+				table.insert(out.cmake_args, w)
+			end
+		elseif w == "--" then
+			after = true
+		elseif w == "-S" or w == "--snippet" then
+			i = i + 1
+			if words[i] then
+				table.insert(out.snippets, words[i])
+			end
+		else
+			local snip = w:match("^%-%-snippet=(.*)$") or w:match("^%-S(.+)$")
+			if snip then
+				table.insert(out.snippets, snip)
+			end
+		end
+		i = i + 1
+	end
+	return out
+end
+
+local function board_from_info(info)
+	local board = info and type(info.cmake) == "table" and info.cmake.board
+	if type(board) ~= "table" or type(board.name) ~= "string" then
+		return nil
+	end
+	local target = board.name
+	if type(board.qualifiers) == "string" and board.qualifiers ~= "" then
+		target = target .. "/" .. board.qualifiers
+	end
+	return target
+end
+
+local function info_list(info, section, key)
+	local s = info and type(info.cmake) == "table" and info.cmake[section]
+	local v = type(s) == "table" and s[key] or nil
+	if type(v) == "string" then
+		return split_list(v)
+	end
+	return type(v) == "table" and v or nil
+end
+
+---Settings that recreate the build directory `disk` of `app`, read from its
+---CMake cache and `build_info.yml`.
+---@param app zephyr.App
+---@param disk zephyr.BuildConfig
+---@return zephyr.BuildSettings
+function M.settings_from_disk(app, disk)
+	local image_info = M.build_info(disk.image_dir)
+	local top_info = disk.image_dir ~= disk.dir and M.build_info(disk.dir) or image_info
+	local west = (top_info and type(top_info.west) == "table" and top_info.west)
+		or (image_info and type(image_info.west) == "table" and image_info.west)
+		or {}
+	local cmd = M.parse_west_command(M.split_words(type(west.command) == "string" and west.command or ""))
+
+	local conf_files = disk.conf_files
+	if #conf_files == 1 and same_dir(conf_files[1], app.dir .. "/prj.conf") then
+		conf_files = {} -- Zephyr's default
+	end
+	local extra_conf = info_list(image_info, "kconfig", "extra-user-files") or disk.extra_conf_files
+	local overlays = info_list(image_info, "devicetree", "extra-user-files") or disk.extra_overlays
+	local snippets = #disk.snippets > 0 and disk.snippets or cmd.snippets
+
+	-- Board roots zephyr.nvim adds anyway, or Zephyr finds itself, are not stored.
+	local defaults = { [vim.fs.normalize(app.dir)] = true }
+	for _, r in ipairs(M.board_roots(app)) do
+		defaults[r] = true
+	end
+	if disk.zephyr_base then
+		defaults[vim.fs.normalize(disk.zephyr_base)] = true
+	end
+	local roots = vim.tbl_filter(function(r)
+		return not defaults[vim.fs.normalize(r)]
+	end, disk.board_roots)
+
+	return settings.normalize({
+		build_dir = settings.relative(app.dir, disk.dir),
+		board = board_from_info(top_info) or board_from_info(image_info) or disk.board,
+		conf_files = rel_list(app.dir, conf_files),
+		extra_conf_files = rel_list(app.dir, extra_conf),
+		overlays = rel_list(app.dir, overlays),
+		snippets = vim.deepcopy(snippets),
+		sysbuild = disk.sysbuild,
+		optimization = cmd.optimization,
+		board_roots = rel_list(settings.root(app), roots),
+		cmake_args = cmd.cmake_args,
+	})
+end
+
+---Import the build directory `disk` (with no settings yet) into the settings file.
+---Fires ZephyrBuildConfigImported (`ev.data`: app, build_dir, name, board).
+---@param app zephyr.App
+---@param disk zephyr.BuildConfig
+---@return zephyr.BuildSettings
+function M.import(app, disk)
+	local s = M.settings_from_disk(app, disk)
+	settings.put(app, s)
+	events.emit("BuildConfigImported", { app = app.dir, build_dir = disk.dir, name = disk.name, board = s.board })
+	return s
+end
+
+---The Build configuration of `app` in `dir`: from its settings, imported from
+---the build directory when it has none, or nil when neither exists.
+---@param app zephyr.App
+---@param dir string
+---@return zephyr.BuildConfig|nil
+function M.get(app, dir)
+	dir = vim.fs.normalize(dir)
+	local s = settings.get(app, dir)
+	if s then
+		return M.from_settings(app, s)
+	end
+	local disk = M.read(dir)
+	if disk and (not disk.app_dir or same_dir(disk.app_dir, app.dir)) then
+		return M.from_settings(app, M.import(app, disk), disk)
+	end
+	return nil
+end
+
+---Every Build configuration of `app`: those in the settings file, and build
+---directories on disk (imported the first time they are seen).
+---@param app zephyr.App
+---@return zephyr.BuildConfig[] sorted by name, `build` first
+function M.list(app)
+	local out, seen = {}, {}
+	for _, s in ipairs(settings.list(app)) do
+		local cfg = M.from_settings(app, s)
+		if not seen[cfg.dir] then
+			seen[cfg.dir] = true
+			table.insert(out, cfg)
+		end
+	end
+	for _, disk in ipairs(M.scan(app)) do
+		if not seen[disk.dir] then
+			seen[disk.dir] = true
+			table.insert(out, M.from_settings(app, M.import(app, disk), disk))
 		end
 	end
 	table.sort(out, function(a, b)
@@ -229,36 +555,23 @@ local function store(app, value)
 	state.set(key, { build_configs = all })
 end
 
----A Build configuration that is not on disk yet.
-local function pending(app, dir, board)
-	return {
-		dir = dir,
-		name = vim.fs.basename(dir),
-		exists = false,
-		board = board,
-		app_dir = app.dir,
-		sysbuild = false,
-		image_dir = dir,
-		conf_files = {},
-		extra_conf_files = {},
-		overlays = {},
-		extra_overlays = {},
-	}
-end
-
----The active Build configuration of `app`: the one chosen for it if it is still
----there (or still to be built), else the first one found on disk.
+---The active Build configuration of `app`: the one chosen for it if it still
+---exists (in the settings or on disk), else the first one found.
 ---@param app zephyr.App
 ---@return zephyr.BuildConfig|nil, boolean selected true when chosen explicitly
 function M.active(app)
 	local chosen = stored(app)
 	if chosen and chosen.dir then
-		local cfg = M.read(chosen.dir)
+		local cfg = M.get(app, chosen.dir)
 		if cfg then
 			return cfg, true
 		end
+		-- Chosen with an older zephyr.nvim, before it had settings.
 		if chosen.board and not vim.uv.fs_stat(chosen.dir .. "/CMakeCache.txt") then
-			return pending(app, chosen.dir, chosen.board), true
+			local s = settings.normalize({ build_dir = settings.relative(app.dir, chosen.dir), board = chosen.board })
+			settings.put(app, s)
+			store(app, { dir = chosen.dir })
+			return M.from_settings(app, s, false), true
 		end
 	end
 	return M.list(app)[1], false
@@ -268,7 +581,7 @@ end
 ---@param app zephyr.App
 ---@param config zephyr.BuildConfig
 function M.activate(app, config)
-	store(app, { dir = config.dir, board = not config.exists and config.board or nil })
+	store(app, { dir = config.dir })
 	events.emit("BuildConfigActivated", { app = app.dir, build_dir = config.dir, board = config.board })
 end
 
@@ -279,16 +592,205 @@ function M.dir_name(board)
 	return "build_" .. board:gsub("[/@%s]", "_")
 end
 
----Create a new Build configuration for `board` and make it active. It exists on
----disk once it has been built.
+---Settings for a new Build configuration: sysbuild on, Zephyr's default conf
+---files and optimisation, the default Toolchain.
 ---@param app zephyr.App
----@param opts { board: string, dir?: string } `dir` defaults to `<app>/build_<board>`
+---@param fields? table any zephyr.BuildSettings fields
+---@return zephyr.BuildSettings
+function M.defaults(app, fields)
+	fields = fields or {}
+	local s = settings.normalize(fields)
+	if not fields.build_dir or fields.build_dir == "" then
+		s.build_dir = s.board and M.dir_name(s.board) or "build"
+	end
+	return s
+end
+
+---Create a Build configuration and make it active. It exists on disk once it
+---has been built. An existing build directory of that name is imported first,
+---and `fields` override what it recorded.
+---@param app zephyr.App
+---@param fields { board: string, dir?: string } plus any zephyr.BuildSettings fields; `dir` (absolute)
+---defaults to `<app>/build_<board>`
 ---@return zephyr.BuildConfig
-function M.new(app, opts)
-	local dir = vim.fs.normalize(opts.dir or (app.dir .. "/" .. M.dir_name(opts.board)))
-	local cfg = M.read(dir) or pending(app, dir, opts.board)
+function M.new(app, fields)
+	fields = vim.deepcopy(fields)
+	local dir = fields.dir
+		or (fields.build_dir and fields.build_dir ~= "" and settings.absolute(app.dir, fields.build_dir))
+		or (app.dir .. "/" .. M.dir_name(fields.board))
+	dir = vim.fs.normalize(dir)
+	fields.dir = nil
+	local existing = M.get(app, dir)
+	local s
+	if existing then
+		s = vim.tbl_extend("force", existing.settings, fields)
+	else
+		s = M.defaults(app, fields)
+	end
+	s.build_dir = settings.relative(app.dir, dir)
+	settings.put(app, s)
+	local cfg = M.from_settings(app, s)
 	M.activate(app, cfg)
 	return cfg
+end
+
+local valid_optimizations = { debug = true, speed = true, size = true, none = true }
+
+---Problems with settings `s` for `app`, such as a missing file.
+---@param app zephyr.App
+---@param s zephyr.BuildSettings
+---@return string[] errors, empty when valid
+function M.validate(app, s)
+	local errs = {}
+	if type(s.board) ~= "string" or s.board == "" then
+		table.insert(errs, "board: a board is required")
+	end
+	if type(s.build_dir) ~= "string" or s.build_dir == "" or s.build_dir == "." then
+		table.insert(errs, "build_dir: a build directory inside or next to the App is required")
+	end
+	for _, field in ipairs({ "conf_files", "extra_conf_files", "overlays" }) do
+		for _, f in ipairs(s[field] or {}) do
+			if not vim.uv.fs_stat(settings.absolute(app.dir, f)) then
+				table.insert(errs, ("%s: %s does not exist"):format(field, f))
+			end
+		end
+	end
+	for _, r in ipairs(s.board_roots or {}) do
+		if not is_dir(settings.absolute(settings.root(app), r)) then
+			table.insert(errs, ("board_roots: %s is not a directory"):format(r))
+		end
+	end
+	if type(s.sysbuild) ~= "boolean" then
+		table.insert(errs, "sysbuild: use true or false")
+	end
+	if s.optimization ~= nil and not valid_optimizations[s.optimization] then
+		table.insert(errs, "optimization: use default, debug, speed, size or none")
+	end
+	return errs
+end
+
+local function same_value(a, b)
+	return vim.deep_equal(a, b)
+end
+
+---Whether going from settings `old` to `new` needs CMake to configure again.
+---@param old zephyr.BuildSettings
+---@param new zephyr.BuildSettings
+---@return boolean
+function M.needs_reconfigure(old, new)
+	old, new = settings.normalize(old), settings.normalize(new)
+	for _, f in ipairs(settings.reconfigure_fields) do
+		if not same_value(old[f], new[f]) then
+			return true
+		end
+	end
+	return false
+end
+
+---Save edited settings of `app`; `old_dir` is the build directory (absolute)
+---they had before, when it changed. Keeps the Build configuration active if it was.
+---@param app zephyr.App
+---@param s zephyr.BuildSettings
+---@param old_dir? string
+---@return zephyr.BuildConfig
+function M.save(app, s, old_dir)
+	s = settings.normalize(s)
+	settings.put(app, s, old_dir and settings.relative(app.dir, old_dir) or nil)
+	local cfg = M.from_settings(app, s)
+	local chosen = stored(app)
+	if old_dir and chosen and same_dir(chosen.dir, old_dir) and not same_dir(old_dir, cfg.dir) then
+		M.activate(app, cfg)
+	end
+	return cfg
+end
+
+local function set_of(list)
+	local out = {}
+	for _, v in ipairs(list or {}) do
+		out[vim.fs.normalize(v)] = true
+	end
+	return out
+end
+
+local function same_set(a, b)
+	return vim.deep_equal(set_of(a), set_of(b))
+end
+
+local function show(list)
+	return #list > 0 and table.concat(list, ";") or "(none)"
+end
+
+---@class zephyr.BuildConfigDifference
+---@field field string settings field
+---@field settings string the value in the settings
+---@field build string the value the build directory was configured with
+
+---Where the build directory of `cfg` was configured differently from its
+---settings, for example by a `west build` run by hand. Empty when it was not
+---built yet.
+---@param app zephyr.App
+---@param cfg zephyr.BuildConfig
+---@return zephyr.BuildConfigDifference[]
+function M.differences(app, cfg)
+	local disk = cfg.exists and M.read(cfg.dir)
+	local s = cfg.settings
+	if not disk or not s then
+		return {}
+	end
+	local out = {}
+	local function add(field, want, have)
+		table.insert(out, { field = field, settings = want, build = have })
+	end
+	if s.board and disk.board and s.board ~= disk.board then
+		add("board", s.board, disk.board)
+	end
+	if s.sysbuild ~= disk.sysbuild then
+		add("sysbuild", tostring(s.sysbuild), tostring(disk.sysbuild))
+	end
+	local conf = abs_list(app.dir, s.conf_files)
+	if #conf > 0 and not same_set(conf, disk.conf_files) then
+		add("conf_files", show(conf), show(disk.conf_files))
+	end
+	local pairs_to_check = {
+		{ "extra_conf_files", abs_list(app.dir, s.extra_conf_files), disk.extra_conf_files },
+		{ "overlays", abs_list(app.dir, s.overlays), disk.extra_overlays },
+		{ "snippets", s.snippets, disk.snippets },
+	}
+	for _, c in ipairs(pairs_to_check) do
+		if not same_set(c[2], c[3]) then
+			add(c[1], show(c[2]), show(c[3]))
+		end
+	end
+	local have = set_of(disk.board_roots)
+	local missing = vim.tbl_filter(function(r)
+		return not have[r]
+	end, M.board_roots(app, s))
+	if #missing > 0 then
+		add("board_roots", show(M.board_roots(app, s)), show(disk.board_roots))
+	end
+	return out
+end
+
+-- A Pristine build asked for "on the next build", per build directory.
+local function pristine_state(app)
+	return vim.deepcopy(state.get(state_key(app)).pristine_next or {})
+end
+
+---Make (or stop making) the next build of `cfg` a Pristine build.
+---@param app zephyr.App
+---@param cfg zephyr.BuildConfig
+---@param on boolean
+function M.set_pristine_next(app, cfg, on)
+	local all = pristine_state(app)
+	all[cfg.dir] = on or nil
+	state.set(state_key(app), { pristine_next = all })
+end
+
+---True when the next build of `cfg` should be a Pristine build.
+---@param app zephyr.App
+---@param cfg zephyr.BuildConfig
+function M.pristine_next(app, cfg)
+	return pristine_state(app)[cfg.dir] == true
 end
 
 ---Parse `west boards --format '{name};{qualifiers}'` output into full board targets.
@@ -318,12 +820,25 @@ function M.parse_boards(text)
 	return out
 end
 
----List the boards west knows about, with their qualifiers.
+---The `west boards` command line listing boards for `app`, with the board roots
+---of `s` (or of the active Build configuration).
+---@param app zephyr.App
+---@param s? zephyr.BuildSettings
+---@return string[]
+function M.boards_command(app, s)
+	local cmd = { "west", "boards", "--format", "{name};{qualifiers}" }
+	for _, r in ipairs(M.board_roots(app, s)) do
+		vim.list_extend(cmd, { "--board-root", r })
+	end
+	return cmd
+end
+
+---List the boards west knows about, with their qualifiers, custom boards included.
 ---@param app zephyr.App
 ---@param on_done fun(boards: string[]|nil, err: string|nil)
-function M.boards(app, on_done)
-	local cmd = { "west", "boards", "--format", "{name};{qualifiers}" }
-	require("zephyr.process").run(cmd, { cwd = app.dir }, function(res)
+---@param s? zephyr.BuildSettings settings whose board roots to search too
+function M.boards(app, on_done, s)
+	require("zephyr.process").run(M.boards_command(app, s), { cwd = app.dir }, function(res)
 		if res.code ~= 0 then
 			return on_done(nil, vim.trim((res.stderr or "") ~= "" and res.stderr or res.stdout or "west boards failed"))
 		end

@@ -1,0 +1,16 @@
+manifest:
+  remotes:
+    - name: ncs
+      url-base: https://github.com/nrfconnect
+  defaults:
+    remote: ncs
+  projects:
+    - name: zephyr
+      repo-path: sdk-zephyr
+      revision: v3.7.99-ncs2
+      import: true
+    - name: mcuboot
+      revision: v2.1.0-ncs3
+      path: bootloader/mcuboot
+  self:
+    path: nrf

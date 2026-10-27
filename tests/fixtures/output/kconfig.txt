@@ -1,0 +1,56 @@
+-- west build: generating a build system
+Loading Zephyr module(s) (Zephyr base): sysbuild_default
+-- Found Python3: /usr/bin/python3 (found suitable version "3.12.3", minimum required is "3.8") found components: Interpreter
+-- Board: nrf5340dk, qualifiers: nrf5340/cpuapp
+Parsing /ws/zephyr/share/sysbuild/Kconfig
+Loaded configuration '/ws/app/build/zephyr/.config'
+Merged configuration '/ws/app/sysbuild.conf'
+Configuration saved to '/ws/app/build/zephyr/.config'
+Kconfig header saved to '/ws/app/build/_sysbuild/autoconf.h'
+-- 
+   *****************************
+   * Running CMake for vt_connect *
+   *****************************
+
+Loading Zephyr default modules (Zephyr base).
+-- Application: /ws/app
+-- Board: nrf5340dk, qualifiers: nrf5340/cpuapp
+CMake Warning at /ws/zephyr/CMakeLists.txt:952 (message):
+  No SOURCES given to Zephyr library: drivers__charger
+
+  Excluding target from build.
+
+
+Parsing /ws/zephyr/Kconfig
+Loaded configuration '/ws/app/build/vt_connect/zephyr/.config'
+Merged configuration '/ws/app/prj.conf'
+Merged configuration '/ws/app/build/vt_connect/zephyr/.config.sysbuild'
+
+warning: WOCKEL_GPIO (defined at /ws/wockel/drivers/gpio/Kconfig:3) was assigned the value 'y' but got the value 'n'. Check these unsatisfied dependencies: DT_HAS_WOCKEL_GPIO_ENABLED (=n). See http://docs.zephyrproject.org/latest/kconfig.html#CONFIG_WOCKEL_GPIO and/or look up WOCKEL_GPIO in the menuconfig/guiconfig interface.
+
+
+/ws/app/prj.conf:12: warning: attempt to assign the value 'y' to the undefined symbol VT_CONNECT_FEATURE
+
+error: Aborting due to Kconfig warnings
+
+CMake Error at /ws/zephyr/cmake/modules/kconfig.cmake:396 (message):
+  command failed with return code: 1
+Call Stack (most recent call first):
+  /ws/zephyr/cmake/modules/zephyr_default.cmake:133 (include)
+  /ws/zephyr/share/zephyr-package/cmake/ZephyrConfig.cmake:66 (include)
+  CMakeLists.txt:4 (find_package)
+
+
+-- Configuring incomplete, errors occurred!
+CMake Error at cmake/modules/sysbuild_extensions.cmake:514 (message):
+  CMake configure failed for Zephyr project: vt_connect
+
+  Location: /ws/app
+Call Stack (most recent call first):
+  cmake/modules/sysbuild_images.cmake:20 (ExternalZephyrProject_Cmake)
+  cmake/modules/sysbuild_default.cmake:21 (include)
+  /ws/zephyr/share/sysbuild/CMakeLists.txt:26 (include)
+
+
+-- Configuring incomplete, errors occurred!
+FATAL ERROR: command exited with status 1: /usr/bin/cmake -DWEST_PYTHON=/usr/bin/python3 -B/ws/app/build -GNinja -DBOARD=nrf5340dk/nrf5340/cpuapp -S/ws/zephyr/share/sysbuild -DAPP_DIR:PATH=/ws/app

@@ -48,3 +48,18 @@ vim.api.nvim_create_autocmd("User", {
 		require("zephyr.clangd").refresh(data.app)
 	end,
 })
+
+-- Say when a build directory without settings (made by VS Code or by hand) was imported.
+vim.api.nvim_create_autocmd("User", {
+	group = vim.api.nvim_create_augroup("zephyr_import", { clear = true }),
+	pattern = "ZephyrBuildConfigImported",
+	callback = function(ev)
+		local data = ev.data or {}
+		vim.schedule(function()
+			vim.notify(
+				("zephyr: imported build configuration %s (%s) into the settings"):format(data.name, data.board or "?"),
+				vim.log.levels.INFO
+			)
+		end)
+	end,
+})

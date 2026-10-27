@@ -1,0 +1,11 @@
+cmake:
+  board:
+    name: nrf52840dk
+    qualifiers: nrf52840
+  kconfig:
+    user-files:
+      - @APP@/app/prj.conf
+      - @APP@/app/debug.conf
+  sysbuild: false
+west:
+  command: /usr/bin/west build -b nrf52840dk/nrf52840 -d build_plain --no-sysbuild

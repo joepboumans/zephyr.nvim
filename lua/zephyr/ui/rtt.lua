@@ -1,6 +1,5 @@
 -- Default UI for `:Zephyr rtt` (the RTT viewer in a terminal split) and
 -- `:Zephyr rtt stop`.
-local app_mod = require("zephyr.app")
 local build_config = require("zephyr.build_config")
 local rtt = require("zephyr.rtt")
 
@@ -94,11 +93,7 @@ function M.run(args)
 		local msg = ("unknown action '%s'; use %s"):format(action, table.concat(M.actions, "|"))
 		return notify(msg, vim.log.levels.ERROR)
 	end
-	local app = app_mod.find()
-	if not app then
-		return notify("not inside a Zephyr app (no CMakeLists.txt with find_package(Zephyr))", vim.log.levels.ERROR)
-	end
-	M.open(app)
+	require("zephyr.ui.app").resolve(M.open)
 end
 
 return M

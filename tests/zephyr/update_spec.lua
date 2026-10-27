@@ -64,7 +64,7 @@ describe("zephyr.update", function()
 		vim.wait(1000, function() return ok ~= nil end)
 		vim.api.nvim_del_autocmd(id)
 		assert.is_false(ok)
-		assert.are.same({ workspace = "/ws", projects = {}, ok = false, code = 1 }, seen)
+		assert.are.same({ workspace = "/ws", projects = {}, ok = false, code = 1, stopped = false }, seen)
 	end)
 
 	it("reports output that was not streamed, such as west missing", function()

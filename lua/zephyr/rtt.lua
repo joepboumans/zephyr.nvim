@@ -117,13 +117,15 @@ local function workspace_of(app, config)
 	return ws
 end
 
+---The Workspace, Probe and Active toolchain environment for `config`; `err`
+---when the Toolchain's environment cannot be resolved.
 local function context(app, config, probe)
 	local ws = workspace_of(app, config)
 	if not probe then
 		probe = require("zephyr.probes").active(ws or { topdir = app.dir })
 	end
-	local env = ws and require("zephyr.toolchain").env(ws) or nil
-	return ws, probe, env
+	local env, err = require("zephyr.toolchain").env(app, config)
+	return ws, probe, env, err
 end
 
 local west_rtt_cache = {}
@@ -210,7 +212,10 @@ function M.open_viewer(app, config, opts, cb)
 	if not config.exists then
 		return cb(nil, config.name .. " has not been built yet")
 	end
-	local _, probe, env = context(app, config, opts.probe)
+	local _, probe, env, err = context(app, config, opts.probe)
+	if err then
+		return cb(nil, err)
+	end
 	M.has_west_rtt(app, config, function(available)
 		local port = opts.port or M.default_port
 		local mode = available and "west" or "jlink"
@@ -386,8 +391,25 @@ function M.stream(opts, on_line)
 
 	if opts.start_server then
 		assert(opts.app and opts.config, "start_server needs opts.app and opts.config")
-		local _, probe, env = context(opts.app, opts.config, opts.probe)
+		local _, probe, env, err = context(opts.app, opts.config, opts.probe)
 		info.probe = probe
+		if err then
+			vim.schedule(function()
+				if opts.on_close then
+					opts.on_close(err)
+				end
+			end)
+			closed = true
+			return {
+				send = function()
+					return false
+				end,
+				close = function() end,
+				is_connected = function()
+					return false
+				end,
+			}
+		end
 		server = start_server(opts.config, { probe = probe, port = port }, opts.app.dir, env)
 	end
 	connect()
