@@ -36,6 +36,10 @@ _Avoid_: board dir, boards folder
 The state where a project checked out in the Workspace is not on the revision its Manifest names.
 _Avoid_: out of date, mismatch
 
+**Pin mismatch**:
+The state where the Manifest pins a project (such as Zephyr) at another revision than a Manifest it imports (such as NCS's) pins it.
+_Avoid_: drift (that is checkout vs. Manifest), version conflict
+
 **Component**:
 One self-contained part of the plugin's Lua API, such as build, flash or RTT, that UIs are assembled from.
 _Avoid_: module (that means a Zephyr module), service

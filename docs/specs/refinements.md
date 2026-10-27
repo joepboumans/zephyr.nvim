@@ -98,6 +98,10 @@ Every other key works as usual, so the output can be scrolled and searched.
 
 Kconfig and sysbuild failures reach quickfix even without a file and line, as entries with no file, listed first. The Kconfig message itself (not just "command failed with return code: 1") is the entry text. Relative paths in CMake messages (for example `cmake/modules/sysbuild_extensions.cmake`) are resolved against `ZEPHYR_BASE`.
 
+## 8. Zephyr pinned differently from NCS
+
+When the Workspace's Manifest pins Zephyr itself (as a Zephyr fork next to an NCS fork), zephyr.nvim compares that revision with the one the NCS fork's own `west.yml` pins. A difference is a **Pin mismatch**: it is reported with Drift (on opening a Workspace file, after writing the Manifest, and by `:Zephyr update check`), as a warning that names both revisions. It never blocks a build.
+
 ## Settled details
 
 - The settings file is JSON, because Neovim reads and writes it with `vim.json` while YAML would need a dependency.
