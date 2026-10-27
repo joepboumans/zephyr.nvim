@@ -6,9 +6,7 @@ local workspace = require("zephyr.workspace")
 
 local M = {}
 
-local function notify(msg, level)
-	vim.notify("zephyr: " .. msg, level or vim.log.levels.INFO)
-end
+local notify = require("zephyr.ui.notify")
 
 local function label(tc)
 	return ("%s  (%s)"):format(tc.name, tc.path)
@@ -110,12 +108,6 @@ function M.run(args)
 			return notify("not inside a west workspace", vim.log.levels.ERROR)
 		end
 		return M.install(ws, args[2])
-	end
-	if action ~= "list" and action ~= "select" then
-		return notify(
-			("unknown action '%s'; use %s"):format(action, table.concat(M.actions, "|")),
-			vim.log.levels.ERROR
-		)
 	end
 	with_config(function(app, cfg)
 		if action == "list" then

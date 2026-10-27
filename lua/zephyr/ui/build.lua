@@ -5,9 +5,7 @@ local output = require("zephyr.ui.output")
 
 local M = {}
 
-local function notify(msg, level)
-	vim.notify("zephyr: " .. msg, level or vim.log.levels.INFO)
-end
+local notify = require("zephyr.ui.notify")
 
 local function label(cfg)
 	return ("%s  [%s]%s%s"):format(
@@ -180,13 +178,6 @@ function M.run(args)
 	local action = args[1]
 	if action == "app" then
 		return require("zephyr.ui.app").select()
-	end
-	local known = action == nil or vim.tbl_contains(M.actions, action)
-	if not known then
-		return notify(
-			("unknown action '%s'; use %s"):format(action, table.concat(M.actions, "|")),
-			vim.log.levels.ERROR
-		)
 	end
 	require("zephyr.ui.app").resolve(function(app)
 		if action == nil then

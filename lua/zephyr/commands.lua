@@ -1,29 +1,21 @@
 local M = {}
 
----Subcommands of :Zephyr. Each is filled in by its component as it lands.
-M.subcommands = {
-	build = function(args)
-		require("zephyr.ui.build").run(args)
-	end,
-	flash = function(args)
-		require("zephyr.ui.flash").run(args)
-	end,
-	rtt = function(args)
-		require("zephyr.ui.rtt").run(args)
-	end,
-	update = function(args)
-		require("zephyr.ui.update").run(args)
-	end,
-	sdk = function(args)
-		require("zephyr.ui.sdk").run(args)
-	end,
-	clangd = function(args)
-		require("zephyr.ui.clangd").run(args)
-	end,
+local notify = require("zephyr.ui.notify")
+
+-- Each subcommand of :Zephyr is run by a Default UI module. A module lists the words that can follow
+-- its subcommand in `M.actions`; those are checked here. A module that also takes other words (update
+-- takes project names) sets `M.any_args`.
+local modules = {
+	build = "zephyr.ui.build",
+	flash = "zephyr.ui.flash",
+	rtt = "zephyr.ui.rtt",
+	update = "zephyr.ui.update",
+	sdk = "zephyr.ui.sdk",
+	clangd = "zephyr.ui.clangd",
 }
 
 function M.names()
-	local names = vim.tbl_keys(M.subcommands)
+	local names = vim.tbl_keys(modules)
 	table.sort(names)
 	return names
 end
@@ -34,24 +26,20 @@ function M.run(opts)
 		vim.notify("Usage: :Zephyr {" .. table.concat(M.names(), "|") .. "}", vim.log.levels.INFO)
 		return
 	end
-	local impl = M.subcommands[name]
-	if impl == nil then
-		vim.notify(("zephyr: unknown subcommand '%s'"):format(name), vim.log.levels.ERROR)
-	elseif impl == false then
-		vim.notify(("zephyr: '%s' is not implemented yet"):format(name), vim.log.levels.WARN)
-	else
-		impl(vim.list_slice(opts.fargs, 2), opts)
+	if not modules[name] then
+		return notify(("unknown subcommand '%s'"):format(name), vim.log.levels.ERROR)
 	end
+	local ui = require(modules[name])
+	local args = vim.list_slice(opts.fargs, 2)
+	local action = args[1]
+	if action and ui.actions and not ui.any_args and not vim.tbl_contains(ui.actions, action) then
+		return notify(
+			("unknown action '%s'; use %s"):format(action, table.concat(ui.actions, "|")),
+			vim.log.levels.ERROR
+		)
+	end
+	ui.run(args, opts)
 end
-
----Words that can follow a subcommand.
-M.actions = {
-	build = { "pristine", "select", "new", "edit", "app" },
-	flash = { "erase", "probe" },
-	rtt = { "stop" },
-	sdk = { "list", "select", "install" },
-	update = { "check" },
-}
 
 local function matching(words, arglead)
 	return vim.tbl_filter(function(w)
@@ -65,8 +53,8 @@ function M.complete(arglead, cmdline)
 	if typed <= 1 then
 		return matching(M.names(), arglead)
 	end
-	if typed == 2 then
-		return matching(M.actions[words[2]] or {}, arglead)
+	if typed == 2 and modules[words[2]] then
+		return matching(require(modules[words[2]]).actions or {}, arglead)
 	end
 	return {}
 end

@@ -8,9 +8,7 @@ local M = {}
 -- Workspaces (by topdir) already checked automatically this session.
 M.checked = {}
 
-local function notify(msg, level)
-	vim.notify("zephyr: " .. msg, level or vim.log.levels.INFO)
-end
+local notify = require("zephyr.ui.notify")
 
 local function describe(p)
 	return ("%s (%s): %s -> %s"):format(p.name, p.path, p.actual:sub(1, 12), p.expected:sub(1, 12))
@@ -179,6 +177,9 @@ function M.confirm(ws, projects)
 		end)
 	end)
 end
+
+M.actions = { "check" }
+M.any_args = true -- project names to update
 
 ---@param args string[]
 function M.run(args)

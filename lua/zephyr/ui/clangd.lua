@@ -4,9 +4,7 @@ local clangd = require("zephyr.clangd")
 
 local M = {}
 
-local function notify(msg, level)
-	vim.notify("zephyr: " .. msg, level or vim.log.levels.INFO)
-end
+local notify = require("zephyr.ui.notify")
 
 ---Write the `.clangd` of `app` and report the result.
 ---@param app zephyr.App

@@ -32,9 +32,7 @@ local list_fields = {
 
 M.optimizations = { "default", "debug", "speed", "size", "none" }
 
-local function notify(msg, level)
-	vim.notify("zephyr: " .. msg, level or vim.log.levels.INFO)
-end
+local notify = require("zephyr.ui.notify")
 
 local function toolchain_text(ref)
 	return ref and (ref.provider .. " " .. ref.version) or ""

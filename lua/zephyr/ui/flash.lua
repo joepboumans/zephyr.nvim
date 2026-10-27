@@ -6,9 +6,7 @@ local output = require("zephyr.ui.output")
 
 local M = {}
 
-local function notify(msg, level)
-	vim.notify("zephyr: " .. msg, level or vim.log.levels.INFO)
-end
+local notify = require("zephyr.ui.notify")
 
 -- The active Probe is kept per Workspace; an App outside one is keyed by itself.
 local function workspace_of(app)
@@ -121,12 +119,6 @@ M.actions = { "erase", "probe" }
 ---@param args string[]
 function M.run(args)
 	local action = args[1]
-	if action ~= nil and not vim.tbl_contains(M.actions, action) then
-		return notify(
-			("unknown action '%s'; use %s"):format(action, table.concat(M.actions, "|")),
-			vim.log.levels.ERROR
-		)
-	end
 	require("zephyr.ui.app").resolve(function(app)
 		if action == nil then
 			M.flash(app)

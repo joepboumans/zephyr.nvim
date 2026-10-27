@@ -8,9 +8,7 @@ local M = {}
 
 M.NOT_IN_APP = "not inside a Zephyr app (no CMakeLists.txt with find_package(Zephyr))"
 
-local function notify(msg, level)
-	vim.notify("zephyr: " .. msg, level or vim.log.levels.INFO)
-end
+local notify = require("zephyr.ui.notify")
 
 local function label(ws, app)
 	local rel = require("zephyr.settings").relative(ws.topdir, app.dir)
