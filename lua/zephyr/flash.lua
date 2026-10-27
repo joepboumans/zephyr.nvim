@@ -1,7 +1,5 @@
 -- Runs `west flash` for a Build configuration in the background with the
 -- Active toolchain's environment, on the chosen Probe.
-local events = require("zephyr.events")
-
 local fs = require("zephyr.fs")
 
 local M = {}
@@ -96,25 +94,17 @@ function M.command(config, opts)
 	return cmd
 end
 
-local running = {}
-
----True while a flash of `build_dir` is running.
+---True while a Job (a flash or a build) of `build_dir` is running.
 ---@param build_dir string
 function M.is_running(build_dir)
-	return running[build_dir] ~= nil
+	return require("zephyr.job").is_running(build_dir)
 end
 
 ---Stop the running flash of `build_dir`. Its ZephyrFlashFinished still fires, with `ok = false`.
 ---@param build_dir string
 ---@return boolean stopped false when no flash of it was running
 function M.stop(build_dir)
-	local r = running[build_dir]
-	if not r then
-		return false
-	end
-	r.stopped = true
-	require("zephyr.process").kill(r.proc)
-	return true
+	return require("zephyr.job").stop(build_dir)
 end
 
 local function workspace_of(app, config)
@@ -134,9 +124,6 @@ end
 ---@return boolean started, string|nil err why it did not start
 function M.run(app, config, opts)
 	opts = opts or {}
-	if running[config.dir] then
-		return false, "already flashing " .. config.name
-	end
 	if not config.exists then
 		return false, config.name .. " has not been built yet"
 	end
@@ -150,50 +137,18 @@ function M.run(app, config, opts)
 	if err then
 		return false, err
 	end
-	local r = {}
-	running[config.dir] = r
-
 	local cmd = M.command(config, { runner = opts.runner, probe = probe, erase = opts.erase })
-	local output = {}
-	local function on_line(stream)
-		return function(line)
-			table.insert(output, line)
-			if opts.on_output then
-				opts.on_output(line, stream)
-			end
-		end
-	end
-
-	local started = vim.uv.hrtime()
-	local info = { app = app.dir, build_dir = config.dir, runner = runner, probe = probe }
-	if opts.on_start then
-		opts.on_start({ cmd = cmd, toolchain = choice })
-	end
-	events.emit("FlashStarted", vim.tbl_extend("force", info, { cmd = cmd }))
-	r.proc = require("zephyr.process").run(cmd, {
+	return require("zephyr.job").start(config.dir, cmd, {
 		cwd = app.dir,
 		env = env,
-		group = true,
-		on_stdout = on_line("stdout"),
-		on_stderr = on_line("stderr"),
-	}, function(res)
-		running[config.dir] = nil
-		if res.code == -1 and #output == 0 and res.stderr and res.stderr ~= "" then
-			on_line("stderr")(res.stderr) -- west could not be started
-		end
-		local result = vim.tbl_extend("force", info, {
-			ok = res.code == 0 and (res.signal or 0) == 0 and not r.stopped,
-			code = res.code,
-			stopped = r.stopped == true,
-			duration = (vim.uv.hrtime() - started) / 1e9,
-		})
-		events.emit("FlashFinished", result)
-		result.output = output
-		if opts.on_exit then
-			opts.on_exit(result)
-		end
-	end)
-	return true
+		event = "Flash",
+		data = { app = app.dir, build_dir = config.dir, runner = runner, probe = probe },
+		on_start = opts.on_start and function()
+			opts.on_start({ cmd = cmd, toolchain = choice })
+		end,
+		on_output = opts.on_output,
+		on_exit = opts.on_exit,
+	})
 end
 
 return M

@@ -1,6 +1,5 @@
 -- Runs `west build` for a Build configuration in the background with the
 -- Active toolchain's environment, and turns its output into quickfix items.
-local events = require("zephyr.events")
 
 local M = {}
 
@@ -319,25 +318,17 @@ function M.command(config, opts)
 	return cmd
 end
 
-local running = {}
-
----True while a build of `build_dir` is running.
+---True while a Job (a build or a flash) of `build_dir` is running.
 ---@param build_dir string
 function M.is_running(build_dir)
-	return running[build_dir] ~= nil
+	return require("zephyr.job").is_running(build_dir)
 end
 
 ---Stop the running build of `build_dir`. Its ZephyrBuildFinished still fires, with `ok = false`.
 ---@param build_dir string
 ---@return boolean stopped false when no build of it was running
 function M.stop(build_dir)
-	local r = running[build_dir]
-	if not r then
-		return false
-	end
-	r.stopped = true
-	require("zephyr.process").kill(r.proc)
-	return true
+	return require("zephyr.job").stop(build_dir)
 end
 
 ---Build `config` of `app` with its Active toolchain's environment. Fires
@@ -350,9 +341,6 @@ end
 ---@return boolean started, string|nil err why it did not start
 function M.run(app, config, opts)
 	opts = opts or {}
-	if running[config.dir] then
-		return false, config.name .. " is already building"
-	end
 	local build_config = require("zephyr.build_config")
 	local env, err, choice = require("zephyr.toolchain").env(app, config)
 	if err then
@@ -360,74 +348,37 @@ function M.run(app, config, opts)
 	end
 	local pristine = opts.pristine or build_config.pristine_next(app, config)
 	local cmd = M.command(config, { pristine = pristine, reconfigure = opts.reconfigure, app = app })
-	local r = {}
-	running[config.dir] = r
-	if pristine then
-		build_config.set_pristine_next(app, config, false)
-	end
-	if app.workspace then
-		require("zephyr.app").activate(app.workspace, app)
-	end
-
-	local output = {}
-	local function on_line(stream)
-		return function(line)
-			table.insert(output, line)
-			if opts.on_output then
-				opts.on_output(line, stream)
-			end
-		end
-	end
-
-	if opts.on_start then
-		opts.on_start({ cmd = cmd, toolchain = choice, pristine = pristine == true })
-	end
-	local started = vim.uv.hrtime()
-	events.emit("BuildStarted", {
-		app = app.dir,
-		build_dir = config.dir,
-		board = config.board,
-		cmd = cmd,
-		toolchain = choice.toolchain,
-	})
-	r.proc = require("zephyr.process").run(cmd, {
+	return require("zephyr.job").start(config.dir, cmd, {
 		cwd = app.dir,
 		env = env,
-		group = true,
-		on_stdout = on_line("stdout"),
-		on_stderr = on_line("stderr"),
-	}, function(res)
-		running[config.dir] = nil
-		if res.code == -1 and #output == 0 and res.stderr and res.stderr ~= "" then
-			on_line("stderr")(res.stderr) -- west could not be started
-		end
-		-- Ninja runs in the image's build dir, so relative paths are relative to it.
-		local image_dir = build_config.image_dir(config.dir, config.app_dir)
-		local zephyr_base = config.zephyr_base or (app.workspace and app.workspace.zephyr_base)
-		local result = {
-			ok = res.code == 0 and (res.signal or 0) == 0 and not r.stopped,
-			code = res.code,
-			stopped = r.stopped == true,
-			build_dir = config.dir,
-			duration = (vim.uv.hrtime() - started) / 1e9,
-			items = M.parse(output, { cwd = image_dir, source_dir = config.app_dir or app.dir, zephyr_base = zephyr_base }),
-			output = output,
-			toolchain = choice.toolchain,
-		}
-		events.emit("BuildFinished", {
-			app = app.dir,
-			build_dir = result.build_dir,
-			ok = result.ok,
-			code = result.code,
-			stopped = result.stopped,
-			duration = result.duration,
-			items = result.items,
-		})
-		if opts.on_exit then
-			opts.on_exit(result)
-		end
-	end)
-	return true
+		event = "Build",
+		data = { app = app.dir, build_dir = config.dir, board = config.board, toolchain = choice.toolchain },
+		on_start = function()
+			if pristine then
+				build_config.set_pristine_next(app, config, false)
+			end
+			if app.workspace then
+				require("zephyr.app").activate(app.workspace, app)
+			end
+			if opts.on_start then
+				opts.on_start({ cmd = cmd, toolchain = choice, pristine = pristine == true })
+			end
+		end,
+		on_output = opts.on_output,
+		finish = function(result)
+			-- Ninja runs in the image's build dir, so relative paths are relative to it.
+			local image_dir = build_config.image_dir(config.dir, config.app_dir)
+			local zephyr_base = config.zephyr_base or (app.workspace and app.workspace.zephyr_base)
+			return {
+				items = M.parse(result.output, {
+					cwd = image_dir,
+					source_dir = config.app_dir or app.dir,
+					zephyr_base = zephyr_base,
+				}),
+			}
+		end,
+		on_exit = opts.on_exit,
+	})
 end
 
 return M

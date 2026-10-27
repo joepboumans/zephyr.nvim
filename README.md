@@ -50,7 +50,7 @@ Run `:checkhealth zephyr` to see what it finds.
 
 When you open a file inside a west workspace, its drift and pin mismatches are checked once per session, and again after you write its manifest. Nothing is updated automatically; a notification gives the count and points to `:Zephyr update`. Turn it off with `require("zephyr").setup({ drift = { auto_check = false } })`.
 
-From Lua: `require("zephyr").drift.check(workspace, function(drifted, err, mismatches) end)` gives `{ name, path, abspath, expected, actual }` per drifted project and `{ name, revision, imported_revision, imported_from, imported_file }` per pin mismatch (also `require("zephyr.manifest").pin_mismatches(workspace)`), and `require("zephyr").update(workspace, { projects = {...}, on_output = function(line, stream) end }, function(ok, result) end)` runs `west update`. They fire `ZephyrDriftDetected` and `ZephyrUpdateFinished`.
+From Lua: `require("zephyr").drift.check(workspace, function(drifted, err, mismatches) end)` gives `{ name, path, abspath, expected, actual }` per drifted project and `{ name, revision, imported_revision, imported_from, imported_file }` per pin mismatch (also `require("zephyr.manifest").pin_mismatches(workspace)`), and `require("zephyr").update(workspace, { projects = {...}, on_output = function(line, stream) end }, function(ok, result) end)` runs `west update`. They fire `ZephyrDriftDetected`, `ZephyrUpdateStarted` and `ZephyrUpdateFinished`.
 
 From Lua: `require("zephyr.build_config")` has `list(app)`, `get(app, dir)`, `active(app)`, `activate(app, cfg)`, `new(app, { board = ..., extra_conf_files = {...}, ... })`, `save(app, settings, old_dir)`, `validate(app, settings)`, `differences(app, cfg)`, `board_roots(app, settings)` and `boards(app, cb, settings)` for the build configurations of an app (`require("zephyr.app").find()`, or `require("zephyr.app").active(workspace)`); each has `cfg.settings`. `require("zephyr.build").run(app, cfg, { pristine = true, on_start = function(info) end, on_output = function(line, stream) end, on_exit = function(result) end })` builds one, with `result.items` as quickfix items, and `require("zephyr.build").stop(cfg.dir)` stops it. `require("zephyr.toolchain")` has `resolve(app, cfg)`, `active(app, cfg)`, `activate(app, cfg, tc)`, `env(app, cfg)` and `default(workspace)`; a toolchain provider may add `rank(toolchains, workspace)` to order its toolchains for a workspace.
 
@@ -64,13 +64,16 @@ The Zephyr SDK is found through `ZEPHYR_SDK_INSTALL_DIR` and the default install
 
 Components fire `User` autocmds named `Zephyr<Event>` (for example `ZephyrBuildFinished`, `ZephyrDriftDetected`, `ZephyrUpdateFinished`, `ZephyrToolchainActivated`) with details in `ev.data`.
 
+Build, flash and update run as Jobs, one at a time per build directory (or Workspace): starting a flash while that Build configuration builds fails with "<name> is busy (building)", and the other way round with "(flashing)".
+
 - `ZephyrBuildStarted`: `app`, `build_dir`, `board`, `cmd`, `toolchain`
 - `ZephyrBuildFinished`: `app`, `build_dir`, `ok`, `code`, `stopped`, `duration` (seconds), `items` (quickfix items)
 - `ZephyrBuildConfigActivated`: `app`, `build_dir`, `board`
 - `ZephyrBuildConfigImported`: `app`, `build_dir`, `name`, `board`
 - `ZephyrAppActivated`: `workspace`, `app`
 - `ZephyrDriftDetected`: `workspace`, `projects` (the drifted projects, as `drift.check` gives them), `pin_mismatches`
-- `ZephyrUpdateFinished`: `workspace`, `projects` (empty for all), `ok`, `code`, `stopped`
+- `ZephyrUpdateStarted`: `workspace`, `projects` (empty for all), `cmd`
+- `ZephyrUpdateFinished`: `workspace`, `projects` (empty for all), `ok`, `code`, `stopped`, `duration` (seconds)
 - `ZephyrToolchainActivated`: `workspace`, `app`, `build_dir` (the build configuration), `toolchain` (`{ provider, id, name, version, path }`)
 - `ZephyrRegistered`: `kind` (`"toolchain_provider"` or `"probe_finder"`), `name`
 - `ZephyrFlashStarted`: `app`, `build_dir`, `runner`, `probe`, `cmd`

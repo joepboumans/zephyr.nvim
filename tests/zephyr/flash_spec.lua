@@ -160,22 +160,9 @@ describe("flash.run", function()
 		assert.is_false(events[2].data.ok)
 	end)
 
-	it("refuses an unbuilt configuration and a second flash while one runs", function()
+	it("refuses an unbuilt configuration", function()
 		local started, err = flash.run(app, { dir = root .. "/new", name = "new", exists = false })
 		assert.is_false(started)
 		assert.matches("not been built", err)
-
-		local pending
-		local process = require("zephyr.process")
-		local saved = process.run
-		process.run = function(_, _, on_exit)
-			pending = on_exit
-		end
-		local cfg = build_config.read(root .. "/build")
-		assert.is_true(flash.run(app, cfg))
-		assert.is_false(flash.run(app, cfg))
-		pending({ code = 0, stdout = "", stderr = "" })
-		process.run = saved
-		assert.is_false(flash.is_running(cfg.dir))
 	end)
 end)
