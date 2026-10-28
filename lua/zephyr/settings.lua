@@ -31,6 +31,7 @@ M.VERSION = 1
 
 ---@class zephyr.SettingsField
 ---@field name string settings field
+---@field label string shown to people, in the settings panel
 ---@field kind "string"|"list"|"bool"|"toolchain"
 ---@field cmake? string CMake cache variable it is read from and passed as; nil when west takes it as a flag
 ---@field aliases? string[] older cache variables that mean the same
@@ -38,29 +39,51 @@ M.VERSION = 1
 ---@field reconfigure? boolean a change needs CMake to configure again
 ---@field default? any value when unset
 
----Every Build configuration setting, in the order the edit buffer shows them and
+---Every Build configuration setting, in the order the settings panel shows them and
 ---`west build` gets them. Board (`-b`), snippets (`-S`), sysbuild, the optimisation
 ---level and the Toolchain are not `-D` variables; `build.command` handles them by name.
 ---@type zephyr.SettingsField[]
 M.fields = {
-	{ name = "board", kind = "string", reconfigure = true },
-	{ name = "build_dir", kind = "string" },
-	{ name = "conf_files", kind = "list", cmake = "CONF_FILE", paths = "app", reconfigure = true },
+	{ name = "board", label = "Board target", kind = "string", reconfigure = true },
+	{ name = "build_dir", label = "Build directory", kind = "string" },
+	{
+		name = "conf_files",
+		label = "Kconfig files",
+		kind = "list",
+		cmake = "CONF_FILE",
+		paths = "app",
+		reconfigure = true,
+	},
 	{
 		name = "extra_conf_files",
+		label = "Extra Kconfig files",
 		kind = "list",
 		cmake = "EXTRA_CONF_FILE",
 		aliases = { "OVERLAY_CONFIG" },
 		paths = "app",
 		reconfigure = true,
 	},
-	{ name = "overlays", kind = "list", cmake = "EXTRA_DTC_OVERLAY_FILE", paths = "app", reconfigure = true },
-	{ name = "snippets", kind = "list", reconfigure = true },
-	{ name = "sysbuild", kind = "bool", default = true, reconfigure = true },
-	{ name = "optimization", kind = "string", reconfigure = true },
-	{ name = "board_roots", kind = "list", cmake = "BOARD_ROOT", paths = "topdir", reconfigure = true },
-	{ name = "cmake_args", kind = "list", reconfigure = true },
-	{ name = "toolchain", kind = "toolchain", reconfigure = true },
+	{
+		name = "overlays",
+		label = "DT overlays",
+		kind = "list",
+		cmake = "EXTRA_DTC_OVERLAY_FILE",
+		paths = "app",
+		reconfigure = true,
+	},
+	{ name = "snippets", label = "Snippets", kind = "list", reconfigure = true },
+	{ name = "sysbuild", label = "Sysbuild", kind = "bool", default = true, reconfigure = true },
+	{ name = "optimization", label = "Optimization", kind = "string", reconfigure = true },
+	{
+		name = "board_roots",
+		label = "Board roots",
+		kind = "list",
+		cmake = "BOARD_ROOT",
+		paths = "topdir",
+		reconfigure = true,
+	},
+	{ name = "cmake_args", label = "CMake arguments", kind = "list", reconfigure = true },
+	{ name = "toolchain", label = "Toolchain", kind = "toolchain", reconfigure = true },
 }
 
 ---Settings with every field present.

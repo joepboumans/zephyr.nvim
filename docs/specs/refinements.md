@@ -44,16 +44,16 @@ The first time zephyr.nvim sees a build directory with no settings (for example 
 
 ## 2. Creating and editing
 
-`:Zephyr build new` and `:Zephyr build edit` open the same editable buffer in a float, pre-filled for `new`:
+`:Zephyr build new` and `:Zephyr build edit` open the same read-only settings panel in a float (issue #39, replacing the first `field: value` edit buffer):
 
-- One `field: value` line per setting.
-- `<Tab>` completes values: boards (including custom boards, see 5), conf and overlay files in the App, snippets, Toolchains.
-- `<CR>` on a line opens a picker for that field.
-- `:w` saves, `q` cancels.
+- One labelled row per setting, labels from `settings.fields`. Empty values show `—`; defaults show a dim hint such as `(from board)`, `(prj.conf)` or `(default)`.
+- `new` starts from the defaults and opens the board picker (including custom boards, see 5); cancelling it keeps the panel. `edit` opens the active Build configuration.
+- `<CR>` or `i` changes the row through `vim.ui.select` or `vim.ui.input`: booleans toggle, board, optimization and Toolchain are single-choice pickers, Kconfig files, overlays and snippets a toggle picker, the rest an input. `x` resets a row.
+- `<C-s>` saves and closes; errors keep the panel open and show on their row. `q` closes without saving, `<Esc>` warns when there are unsaved changes, `g?` lists the keys. There is no `:w`.
 
-The Output window keys were changed later; see [hotkeys](hotkeys.md). The form is being replaced by a panel (see the build configuration UI research).
+The Output window keys were changed later; see [hotkeys](hotkeys.md).
 
-After saving an edit that needs CMake to reconfigure (board, conf files, overlays, snippets, sysbuild, board roots, CMake arguments, Toolchain), it asks: "Pristine build now / On the next build / Not now". With `setup({ build = { auto_pristine = true } })` it doesn't ask and the next build is pristine.
+After saving an edit that needs CMake to reconfigure (board, conf files, overlays, snippets, sysbuild, board roots, CMake arguments, Toolchain), once the panel has closed, it asks: "Pristine build now / On the next build / Not now". With `setup({ build = { auto_pristine = true } })` it doesn't ask and the next build is pristine.
 
 ## 3. Toolchain per Build configuration
 

@@ -135,7 +135,7 @@ function M.after_edit(app, cfg)
 	end)
 end
 
----Create a Build configuration in the edit buffer; `:w` creates it and makes it active.
+---Create a Build configuration in the settings panel; `<C-s>` creates it and makes it active.
 ---@param app zephyr.App
 ---@param on_created? fun(cfg: zephyr.BuildConfig)
 function M.new(app, on_created)
@@ -149,7 +149,7 @@ function M.new(app, on_created)
 	})
 end
 
----Edit the active Build configuration of `app` in the edit buffer.
+---Edit the active Build configuration of `app` in the settings panel.
 ---@param app zephyr.App
 function M.edit(app)
 	local cfg = build_config.active(app)
