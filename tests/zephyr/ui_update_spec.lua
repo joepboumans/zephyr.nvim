@@ -69,6 +69,20 @@ describe("drift default UI", function()
 		assert.are.same({ topdir = root, projects = { "mcuboot" } }, ran)
 	end)
 
+	it("streams west update into the Output window and ends with the status and duration", function()
+		local calls = dofile("tests/helpers.lua").stub_process(function()
+			return { code = 0, stdout_lines = { "=== updating mcuboot" } }
+		end)
+		ui.update({ topdir = root }, { "mcuboot" })
+		calls.restore()
+		local lines = vim.api.nvim_buf_get_lines(vim.fn.bufnr("zephyr://output"), 0, -1, false)
+		vim.cmd("only")
+		assert.are.equal("$ west update mcuboot", lines[1])
+		assert.are.equal("=== updating mcuboot", lines[2])
+		assert.matches("^%[done in %d+%.%ds%]$", lines[3])
+		assert.matches("finished", notes[#notes].msg)
+	end)
+
 	it(":Zephyr update does nothing when cancelled", function()
 		local ran = false
 		zephyr.update = function() ran = true end

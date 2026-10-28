@@ -24,12 +24,35 @@ describe(":Zephyr", function()
 		assert.are.same({ "erase", "probe" }, commands.complete("", "Zephyr flash "))
 	end)
 
-	it("runs an implemented subcommand with the remaining args", function()
+	it("runs a subcommand's UI with the remaining args", function()
+		local ui = require("zephyr.ui.build")
 		local got
-		local saved = commands.subcommands.build
-		commands.subcommands.build = function(args) got = args end
-		vim.cmd("Zephyr build --pristine")
-		commands.subcommands.build = saved
-		assert.are.same({ "--pristine" }, got)
+		local saved = ui.run
+		ui.run = function(args) got = args end
+		vim.cmd("Zephyr build pristine")
+		ui.run = saved
+		assert.are.same({ "pristine" }, got)
+	end)
+
+	it("reports an unknown action without running the subcommand", function()
+		local ui = require("zephyr.ui.build")
+		local ran, msg = false, nil
+		local saved_run, saved_notify = ui.run, vim.notify
+		ui.run = function() ran = true end
+		vim.notify = function(m) msg = m end
+		vim.cmd("Zephyr build bogus")
+		ui.run, vim.notify = saved_run, saved_notify
+		assert.is_false(ran)
+		assert.are.equal("zephyr: unknown action 'bogus'; use pristine|select|new|edit|app", msg)
+	end)
+
+	it("passes any words to update, which takes project names", function()
+		local ui = require("zephyr.ui.update")
+		local got
+		local saved = ui.run
+		ui.run = function(args) got = args end
+		vim.cmd("Zephyr update zephyr nrf")
+		ui.run = saved
+		assert.are.same({ "zephyr", "nrf" }, got)
 	end)
 end)

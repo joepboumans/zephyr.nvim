@@ -3,6 +3,8 @@
 -- build, flash and RTT use when the current file is not inside one.
 local workspace = require("zephyr.workspace")
 
+local fs = require("zephyr.fs")
+
 local M = {}
 
 ---@class zephyr.App
@@ -14,12 +16,10 @@ local function is_app_dir(dir)
 	if not dir then
 		return false
 	end
-	local fd = io.open(dir .. "/CMakeLists.txt", "r")
-	if not fd then
+	local text = fs.read(dir .. "/CMakeLists.txt")
+	if not text then
 		return false
 	end
-	local text = fd:read("*a")
-	fd:close()
 	return text:lower():find("find_package%s*%(%s*zephyr") ~= nil
 end
 

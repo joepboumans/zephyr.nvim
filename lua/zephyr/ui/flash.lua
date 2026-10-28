@@ -6,9 +6,7 @@ local output = require("zephyr.ui.output")
 
 local M = {}
 
-local function notify(msg, level)
-	vim.notify("zephyr: " .. msg, level or vim.log.levels.INFO)
-end
+local notify = require("zephyr.ui.notify")
 
 -- The active Probe is kept per Workspace; an App outside one is keyed by itself.
 local function workspace_of(app)
@@ -78,28 +76,12 @@ function M.flash(app, opts)
 	if not cfg or not cfg.exists then
 		return notify("nothing built yet; run :Zephyr build first", vim.log.levels.WARN)
 	end
-	if flash.is_running(cfg.dir) then
-		return notify("already flashing " .. cfg.name, vim.log.levels.WARN)
-	end
 	M.resolve_probe(app, function(probe)
-		local buf
-		local function stop()
-			flash.stop(cfg.dir)
-		end
-		local started, err = flash.run(app, cfg, {
-			probe = probe,
-			erase = opts.erase,
-			on_start = function(info)
-				local title = { require("zephyr.toolchain").describe(info.toolchain), "$ " .. table.concat(info.cmd, " ") }
-				buf = output.open("flash", title, { stop = stop })
-			end,
-			on_output = function(line)
-				output.append(buf, line)
+		local follow = output.follow("flash", {
+			stop = function()
+				flash.stop(cfg.dir)
 			end,
 			on_exit = function(res)
-				output.finish(stop)
-				local status = res.stopped and "stopped" or (res.ok and "done" or ("failed, exit " .. res.code))
-				output.append(buf, ("[%s in %.1fs]"):format(status, res.duration))
 				local where = res.probe and (" on " .. res.probe.name) or ""
 				if res.stopped then
 					notify(("flash of %s%s stopped"):format(cfg.name, where), vim.log.levels.WARN)
@@ -109,6 +91,13 @@ function M.flash(app, opts)
 					notify(("flash of %s%s failed"):format(cfg.name, where), vim.log.levels.ERROR)
 				end
 			end,
+		})
+		local started, err = flash.run(app, cfg, {
+			probe = probe,
+			erase = opts.erase,
+			on_start = follow.on_start,
+			on_output = follow.on_output,
+			on_exit = follow.on_exit,
 		})
 		if not started then
 			notify(err or "flash did not start", vim.log.levels.ERROR)
@@ -121,12 +110,6 @@ M.actions = { "erase", "probe" }
 ---@param args string[]
 function M.run(args)
 	local action = args[1]
-	if action ~= nil and not vim.tbl_contains(M.actions, action) then
-		return notify(
-			("unknown action '%s'; use %s"):format(action, table.concat(M.actions, "|")),
-			vim.log.levels.ERROR
-		)
-	end
 	require("zephyr.ui.app").resolve(function(app)
 		if action == nil then
 			M.flash(app)

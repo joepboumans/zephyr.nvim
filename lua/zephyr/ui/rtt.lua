@@ -10,9 +10,7 @@ M.viewer = nil
 ---@type zephyr.RttStream|nil a stream started through the default UI
 M.stream = nil
 
-local function notify(msg, level)
-	vim.notify("zephyr: " .. msg, level or vim.log.levels.INFO)
-end
+local notify = require("zephyr.ui.notify")
 
 local function show(buf)
 	local win = vim.fn.bufwinid(buf)
@@ -89,9 +87,6 @@ function M.run(args)
 	local action = args[1]
 	if action == "stop" then
 		return M.stop()
-	elseif action ~= nil then
-		local msg = ("unknown action '%s'; use %s"):format(action, table.concat(M.actions, "|"))
-		return notify(msg, vim.log.levels.ERROR)
 	end
 	require("zephyr.ui.app").resolve(M.open)
 end

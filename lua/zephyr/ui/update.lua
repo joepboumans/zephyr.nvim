@@ -8,9 +8,7 @@ local M = {}
 -- Workspaces (by topdir) already checked automatically this session.
 M.checked = {}
 
-local function notify(msg, level)
-	vim.notify("zephyr: " .. msg, level or vim.log.levels.INFO)
-end
+local notify = require("zephyr.ui.notify")
 
 local function describe(p)
 	return ("%s (%s): %s -> %s"):format(p.name, p.path, p.actual:sub(1, 12), p.expected:sub(1, 12))
@@ -112,30 +110,29 @@ end
 ---@param ws zephyr.Workspace
 ---@param projects string[]
 function M.update(ws, projects)
-	local output = require("zephyr.ui.output")
-	local cmd = "$ west update" .. (#projects > 0 and (" " .. table.concat(projects, " ")) or "")
 	local handle
-	local function stop()
-		if handle then
+	local follow = require("zephyr.ui.output").follow("update", {
+		stop = function()
 			handle.stop()
-		end
-	end
-	local buf = output.open("update", cmd, { stop = stop })
+		end,
+		on_exit = function(res)
+			if res.err then
+				notify(res.err, vim.log.levels.ERROR)
+			elseif res.stopped then
+				notify("west update stopped", vim.log.levels.WARN)
+			elseif res.ok then
+				notify("west update finished")
+			else
+				notify(("west update failed (exit %d); see the Output window"):format(res.code), vim.log.levels.ERROR)
+			end
+		end,
+	})
 	handle = zephyr.update(ws, {
 		projects = projects,
-		on_output = function(line)
-			output.append(buf, line)
-		end,
-	}, function(ok, res)
-		output.finish(stop)
-		output.append(buf, res.stopped and "[stopped]" or (ok and "[done]" or ("[failed, exit " .. res.code .. "]")))
-		if res.stopped then
-			notify("west update stopped", vim.log.levels.WARN)
-		elseif ok then
-			notify("west update finished")
-		else
-			notify(("west update failed (exit %d); see the Output window"):format(res.code), vim.log.levels.ERROR)
-		end
+		on_start = follow.on_start,
+		on_output = follow.on_output,
+	}, function(_, res)
+		follow.on_exit(res)
 	end)
 end
 
@@ -179,6 +176,9 @@ function M.confirm(ws, projects)
 		end)
 	end)
 end
+
+M.actions = { "check" }
+M.any_args = true -- project names to update
 
 ---@param args string[]
 function M.run(args)

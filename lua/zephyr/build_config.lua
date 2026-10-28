@@ -7,6 +7,8 @@ local state = require("zephyr.state")
 local events = require("zephyr.events")
 local settings = require("zephyr.settings")
 
+local fs = require("zephyr.fs")
+
 local M = {}
 
 ---@class zephyr.BuildConfig
@@ -19,27 +21,13 @@ local M = {}
 ---@field image_dir string build directory of the App's own image; same as `dir` without sysbuild
 ---@field conf_files string[] Kconfig fragments (`CONF_FILE`)
 ---@field extra_conf_files string[] `EXTRA_CONF_FILE`
----@field overlays string[] devicetree overlays (`DTC_OVERLAY_FILE`)
----@field extra_overlays string[] `EXTRA_DTC_OVERLAY_FILE`
+---@field overlays string[] devicetree overlays (`EXTRA_DTC_OVERLAY_FILE`)
+---@field base_overlays string[] `DTC_OVERLAY_FILE`, Zephyr's own choice of overlays
 ---@field snippets string[] `SNIPPET`
 ---@field board_roots string[] `BOARD_ROOT` as cached
 ---@field zephyr_base string|nil
 ---@field settings zephyr.BuildSettings|nil what zephyr.nvim configures it with; these win over the cache
 
-local function read_file(path)
-	local fd = io.open(path, "r")
-	if not fd then
-		return nil
-	end
-	local text = fd:read("*a")
-	fd:close()
-	return text
-end
-
-local function is_dir(path)
-	local st = path and vim.uv.fs_stat(path)
-	return st ~= nil and st.type == "directory"
-end
 
 ---Parse CMakeCache.txt text into `{ KEY = value }`.
 ---@param text string
@@ -60,7 +48,7 @@ end
 ---@param dir string
 ---@return table<string, string>|nil cache, nil when `dir` is not a Zephyr build directory
 local function read_cache(dir)
-	local text = read_file(dir .. "/CMakeCache.txt")
+	local text = fs.read(dir .. "/CMakeCache.txt")
 	if not text then
 		return nil
 	end
@@ -114,19 +102,19 @@ end
 ---@param app_dir? string the App, used when domains.yaml names no default
 ---@return string
 function M.image_dir(dir, app_dir)
-	local text = read_file(dir .. "/domains.yaml")
+	local text = fs.read(dir .. "/domains.yaml")
 	if not text then
 		return dir
 	end
 	local domains = M.parse_domains(text)
 	local name = domains.default
 	for _, d in ipairs(domains.domains) do
-		if d.name == name and is_dir(d.build_dir) then
+		if d.name == name and fs.is_dir(d.build_dir) then
 			return d.build_dir
 		end
 	end
 	name = name or (app_dir and vim.fs.basename(app_dir))
-	if name and is_dir(dir .. "/" .. name) then
+	if name and fs.is_dir(dir .. "/" .. name) then
 		return dir .. "/" .. name
 	end
 	return dir
@@ -165,7 +153,7 @@ function M.read(dir)
 	local function key(name)
 		return nonempty(image[name]) or nonempty(cache[name])
 	end
-	return {
+	local cfg = {
 		dir = dir,
 		name = vim.fs.basename(dir),
 		exists = true,
@@ -173,14 +161,20 @@ function M.read(dir)
 		app_dir = app_dir or nonempty(image.APPLICATION_SOURCE_DIR),
 		sysbuild = sysbuild,
 		image_dir = image_dir,
-		conf_files = split_list(key("CONF_FILE")),
-		extra_conf_files = split_list(key("EXTRA_CONF_FILE") or key("OVERLAY_CONFIG")),
-		overlays = split_list(key("DTC_OVERLAY_FILE")),
-		extra_overlays = split_list(key("EXTRA_DTC_OVERLAY_FILE")),
+		base_overlays = split_list(key("DTC_OVERLAY_FILE")),
 		snippets = split_list(key("SNIPPET") or key("CACHED_SNIPPET")),
-		board_roots = split_list(nonempty(cache.BOARD_ROOT) or nonempty(image.BOARD_ROOT)),
 		zephyr_base = key("ZEPHYR_BASE"),
 	}
+	for _, field in ipairs(settings.fields) do
+		if field.cmake then
+			local value = key(field.cmake)
+			for _, alias in ipairs(field.aliases or {}) do
+				value = value or key(alias)
+			end
+			cfg[field.name] = split_list(value)
+		end
+	end
+	return cfg
 end
 
 local function same_dir(a, b)
@@ -236,10 +230,10 @@ function M.board_roots(app, s)
 	end
 	local ws = app.workspace
 	if ws then
-		if is_dir(ws.topdir .. "/boards") then
+		if fs.is_dir(ws.topdir .. "/boards") then
 			add(ws.topdir)
 		end
-		if ws.manifest_dir and is_dir(ws.manifest_dir .. "/boards") then
+		if ws.manifest_dir and fs.is_dir(ws.manifest_dir .. "/boards") then
 			add(ws.manifest_dir)
 		end
 	end
@@ -251,21 +245,9 @@ end
 
 -- Settings ↔ Build configurations ---------------------------------------------
 
-local function abs_list(base, list)
-	return vim.tbl_map(function(p)
-		return settings.absolute(base, p)
-	end, list or {})
-end
-
-local function rel_list(base, list)
-	return vim.tbl_map(function(p)
-		return settings.relative(base, p)
-	end, list or {})
-end
-
 ---A Build configuration that is not on disk yet.
 local function pending(app, dir, board)
-	return {
+	local cfg = {
 		dir = dir,
 		name = vim.fs.basename(dir),
 		exists = false,
@@ -273,13 +255,15 @@ local function pending(app, dir, board)
 		app_dir = app.dir,
 		sysbuild = false,
 		image_dir = dir,
-		conf_files = {},
-		extra_conf_files = {},
-		overlays = {},
-		extra_overlays = {},
+		base_overlays = {},
 		snippets = {},
-		board_roots = {},
 	}
+	for _, field in ipairs(settings.fields) do
+		if field.cmake then
+			cfg[field.name] = {}
+		end
+	end
+	return cfg
 end
 
 ---The Build configuration described by settings `s`, merged with what its build
@@ -301,17 +285,11 @@ function M.from_settings(app, s, disk)
 	if not cfg.exists then
 		cfg.sysbuild = s.sysbuild
 	end
-	if #s.conf_files > 0 then
-		cfg.conf_files = abs_list(app.dir, s.conf_files)
-	end
-	if #s.extra_conf_files > 0 then
-		cfg.extra_conf_files = abs_list(app.dir, s.extra_conf_files)
-	end
-	if #s.overlays > 0 then
-		cfg.extra_overlays = abs_list(app.dir, s.overlays)
-	end
-	if #s.snippets > 0 then
-		cfg.snippets = vim.deepcopy(s.snippets)
+	-- Board roots keep what the build directory records: configure adds zephyr.nvim's own too.
+	for _, field in ipairs(settings.fields) do
+		if field.kind == "list" and field.name ~= "board_roots" and cfg[field.name] and #s[field.name] > 0 then
+			cfg[field.name] = settings.absolute_list(app, field, s[field.name])
+		end
 	end
 	return cfg
 end
@@ -361,16 +339,19 @@ local optimization_symbols = {
 }
 M.optimization_symbols = optimization_symbols
 
--- CMake variables that settings fields already cover.
-local covered = {
-	BOARD = true,
-	CONF_FILE = true,
-	EXTRA_CONF_FILE = true,
-	OVERLAY_CONFIG = true,
-	EXTRA_DTC_OVERLAY_FILE = true,
-	BOARD_ROOT = true,
-	SNIPPET = true,
-}
+-- CMake variables a `west build` command line passes for settings: those of the
+-- settings fields, and BOARD and SNIPPET, which settings take from `-b` and `-S`.
+local function settings_variable(name)
+	if name == "BOARD" or name == "SNIPPET" then
+		return true
+	end
+	for _, field in ipairs(settings.fields) do
+		if field.cmake == name or vim.tbl_contains(field.aliases or {}, name) then
+			return true
+		end
+	end
+	return false
+end
 
 ---What a `west build` command line says beyond the cache: snippets (`-S`), the
 ---optimisation level and the other CMake arguments after `--`.
@@ -392,7 +373,7 @@ function M.parse_west_command(words)
 			end
 			if level then
 				out.optimization = level
-			elseif not (name and covered[name]) then
+			elseif not (name and settings_variable(name)) then
 				table.insert(out.cmake_args, w)
 			end
 		elseif w == "--" then
@@ -451,9 +432,6 @@ function M.settings_from_disk(app, disk)
 	if #conf_files == 1 and same_dir(conf_files[1], app.dir .. "/prj.conf") then
 		conf_files = {} -- Zephyr's default
 	end
-	local extra_conf = info_list(image_info, "kconfig", "extra-user-files") or disk.extra_conf_files
-	local overlays = info_list(image_info, "devicetree", "extra-user-files") or disk.extra_overlays
-	local snippets = #disk.snippets > 0 and disk.snippets or cmd.snippets
 
 	-- Board roots zephyr.nvim adds anyway, or Zephyr finds itself, are not stored.
 	local defaults = { [vim.fs.normalize(app.dir)] = true }
@@ -467,18 +445,27 @@ function M.settings_from_disk(app, disk)
 		return not defaults[vim.fs.normalize(r)]
 	end, disk.board_roots)
 
-	return settings.normalize({
+	-- What the build directory records for the `-D` fields, as absolute paths.
+	local recorded = {
+		conf_files = conf_files,
+		extra_conf_files = info_list(image_info, "kconfig", "extra-user-files") or disk.extra_conf_files,
+		overlays = info_list(image_info, "devicetree", "extra-user-files") or disk.overlays,
+		board_roots = roots,
+	}
+	local out = {
 		build_dir = settings.relative(app.dir, disk.dir),
 		board = board_from_info(top_info) or board_from_info(image_info) or disk.board,
-		conf_files = rel_list(app.dir, conf_files),
-		extra_conf_files = rel_list(app.dir, extra_conf),
-		overlays = rel_list(app.dir, overlays),
-		snippets = vim.deepcopy(snippets),
+		snippets = #disk.snippets > 0 and vim.deepcopy(disk.snippets) or cmd.snippets,
 		sysbuild = disk.sysbuild,
 		optimization = cmd.optimization,
-		board_roots = rel_list(settings.root(app), roots),
 		cmake_args = cmd.cmake_args,
-	})
+	}
+	for _, field in ipairs(settings.fields) do
+		if field.cmake then
+			out[field.name] = settings.relative_list(app, field, recorded[field.name])
+		end
+	end
+	return settings.normalize(out)
 end
 
 ---Import the build directory `disk` (with no settings yet) into the settings file.
@@ -656,7 +643,7 @@ function M.validate(app, s)
 		end
 	end
 	for _, r in ipairs(s.board_roots or {}) do
-		if not is_dir(settings.absolute(settings.root(app), r)) then
+		if not fs.is_dir(settings.absolute(settings.root(app), r)) then
 			table.insert(errs, ("board_roots: %s is not a directory"):format(r))
 		end
 	end
@@ -679,8 +666,8 @@ end
 ---@return boolean
 function M.needs_reconfigure(old, new)
 	old, new = settings.normalize(old), settings.normalize(new)
-	for _, f in ipairs(settings.reconfigure_fields) do
-		if not same_value(old[f], new[f]) then
+	for _, f in ipairs(settings.fields) do
+		if f.reconfigure and not same_value(old[f.name], new[f.name]) then
 			return true
 		end
 	end
@@ -747,26 +734,27 @@ function M.differences(app, cfg)
 	if s.sysbuild ~= disk.sysbuild then
 		add("sysbuild", tostring(s.sysbuild), tostring(disk.sysbuild))
 	end
-	local conf = abs_list(app.dir, s.conf_files)
-	if #conf > 0 and not same_set(conf, disk.conf_files) then
-		add("conf_files", show(conf), show(disk.conf_files))
-	end
-	local pairs_to_check = {
-		{ "extra_conf_files", abs_list(app.dir, s.extra_conf_files), disk.extra_conf_files },
-		{ "overlays", abs_list(app.dir, s.overlays), disk.extra_overlays },
-		{ "snippets", s.snippets, disk.snippets },
-	}
-	for _, c in ipairs(pairs_to_check) do
-		if not same_set(c[2], c[3]) then
-			add(c[1], show(c[2]), show(c[3]))
+	for _, field in ipairs(settings.fields) do
+		local have = disk[field.name]
+		if field.kind == "list" and have then
+			local want = settings.absolute_list(app, field, s[field.name])
+			local differs
+			if field.name == "board_roots" then
+				-- The build directory needs every root, also those zephyr.nvim adds itself.
+				want = M.board_roots(app, s)
+				local recorded = set_of(have)
+				differs = #vim.tbl_filter(function(r)
+					return not recorded[r]
+				end, want) > 0
+			elseif field.name == "conf_files" and #want == 0 then
+				differs = false -- Zephyr's default
+			else
+				differs = not same_set(want, have)
+			end
+			if differs then
+				add(field.name, show(want), show(have))
+			end
 		end
-	end
-	local have = set_of(disk.board_roots)
-	local missing = vim.tbl_filter(function(r)
-		return not have[r]
-	end, M.board_roots(app, s))
-	if #missing > 0 then
-		add("board_roots", show(M.board_roots(app, s)), show(disk.board_roots))
 	end
 	return out
 end

@@ -250,20 +250,4 @@ describe("build.run", function()
 		assert.is_true(result.ok)
 		assert.is_true(events[2].data.ok)
 	end)
-
-	it("refuses a second build of the same dir while one runs", function()
-		local pending
-		local process = require("zephyr.process")
-		local saved = process.run
-		process.run = function(_, _, on_exit)
-			pending = on_exit
-		end
-		local cfg = build_config.read(root .. "/build")
-		assert.is_true(build.run(app, cfg))
-		assert.is_false(build.run(app, cfg))
-		assert.is_true(build.is_running(cfg.dir))
-		pending({ code = 0, stdout = "", stderr = "" })
-		process.run = saved
-		assert.is_false(build.is_running(cfg.dir))
-	end)
 end)

@@ -4,6 +4,8 @@
 local build_config = require("zephyr.build_config")
 local events = require("zephyr.events")
 
+local fs = require("zephyr.fs")
+
 local M = {}
 
 -- First line of every `.clangd` we write; a file without it is never touched.
@@ -48,16 +50,6 @@ local function config()
 	}
 end
 
-local function read_file(path)
-	local fd = io.open(path, "r")
-	if not fd then
-		return nil
-	end
-	local text = fd:read("*a")
-	fd:close()
-	return text
-end
-
 ---Path of the App's `.clangd`.
 ---@param app zephyr.App
 function M.path(app)
@@ -68,7 +60,7 @@ end
 ---@param app zephyr.App
 ---@return "missing"|"generated"|"hand-written"
 function M.status(app)
-	local text = read_file(M.path(app))
+	local text = fs.read(M.path(app))
 	if not text then
 		return "missing"
 	end
@@ -144,7 +136,7 @@ function M.write(app, opts)
 		database = cfg.image_dir,
 		has_database = vim.uv.fs_stat(cfg.image_dir .. "/compile_commands.json") ~= nil,
 	}
-	local current = read_file(path)
+	local current = fs.read(path)
 	if current and not vim.startswith(current, M.MARKER) then
 		result.status = "hand-written"
 		return false, result

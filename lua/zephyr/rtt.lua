@@ -4,6 +4,8 @@
 local events = require("zephyr.events")
 local flash = require("zephyr.flash")
 
+local fs = require("zephyr.fs")
+
 local M = {}
 
 M.default_host = "127.0.0.1"
@@ -11,16 +13,6 @@ M.default_port = 19021
 
 -- Runners that support `west rtt` (Zephyr 4.0+).
 local rtt_runners = { jlink = true, pyocd = true, openocd = true }
-
-local function read_file(path)
-	local fd = io.open(path, "r")
-	if not fd then
-		return nil
-	end
-	local text = fd:read("*a")
-	fd:close()
-	return text
-end
 
 ---Parse the jlink runner's arguments in runners.yaml (`args: jlink:`).
 ---@param text string
@@ -54,7 +46,7 @@ end
 ---@param config zephyr.BuildConfig
 ---@return { device: string|nil, speed: string|nil, iface: string|nil }
 function M.jlink_args(config)
-	return M.parse_jlink_args(read_file(flash.runners_file(config)) or "")
+	return M.parse_jlink_args(fs.read(flash.runners_file(config)) or "")
 end
 
 ---The `west rtt` command line for `config`. When the board's debug-runner
@@ -67,7 +59,7 @@ function M.west_command(config, opts)
 	local cmd = { "west", "rtt", "-d", config.dir }
 	local runner = opts.runner
 	if not runner then
-		local runners = flash.parse_runners(read_file(flash.runners_file(config)) or "")
+		local runners = flash.parse_runners(fs.read(flash.runners_file(config)) or "")
 		local debug_runner = runners.debug_runner
 		if debug_runner and not rtt_runners[debug_runner] and vim.tbl_contains(runners.runners, "jlink") then
 			runner = "jlink"

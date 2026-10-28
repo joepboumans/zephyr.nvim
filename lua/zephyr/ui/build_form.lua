@@ -7,34 +7,23 @@ local settings = require("zephyr.settings")
 
 local M = {}
 
--- Fields in the order they are shown.
-M.fields = {
-	"board",
-	"build_dir",
-	"conf_files",
-	"extra_conf_files",
-	"overlays",
-	"snippets",
-	"sysbuild",
-	"optimization",
-	"board_roots",
-	"cmake_args",
-	"toolchain",
-}
+local field_of = {}
+for _, f in ipairs(settings.fields) do
+	field_of[f.name] = f
+end
 
-local list_fields = {
-	conf_files = true,
-	extra_conf_files = true,
-	overlays = true,
-	snippets = true,
-	board_roots = true,
-}
+local function is_list(name)
+	return field_of[name] ~= nil and field_of[name].kind == "list"
+end
+
+-- CMake arguments can hold commas, so they are separated by spaces.
+local function separator(name)
+	return name == "cmake_args" and " " or ", "
+end
 
 M.optimizations = { "default", "debug", "speed", "size", "none" }
 
-local function notify(msg, level)
-	vim.notify("zephyr: " .. msg, level or vim.log.levels.INFO)
-end
+local notify = require("zephyr.ui.notify")
 
 local function toolchain_text(ref)
 	return ref and (ref.provider .. " " .. ref.version) or ""
@@ -53,23 +42,24 @@ function M.render(app, s, is_new)
 		),
 		"# Lists are comma separated (cmake_args: space separated). Empty means the default.",
 	}
-	for _, f in ipairs(M.fields) do
-		local v = s[f]
+	for _, f in ipairs(settings.fields) do
+		local v = s[f.name]
+		if v == nil then
+			v = f.default
+		end
 		local text
-		if f == "toolchain" then
+		if f.kind == "toolchain" then
 			text = toolchain_text(v)
-		elseif f == "cmake_args" then
-			text = table.concat(v or {}, " ")
-		elseif list_fields[f] then
-			text = table.concat(v or {}, ", ")
-		elseif f == "sysbuild" then
-			text = tostring(v ~= false)
-		elseif f == "optimization" then
+		elseif f.kind == "list" then
+			text = table.concat(v or {}, separator(f.name))
+		elseif f.kind == "bool" then
+			text = tostring(v)
+		elseif f.name == "optimization" then
 			text = v or "default"
 		else
 			text = v or ""
 		end
-		table.insert(lines, f .. ": " .. text)
+		table.insert(lines, f.name .. ": " .. text)
 	end
 	return lines
 end
@@ -90,22 +80,19 @@ end
 ---@return zephyr.BuildSettings|nil s, string[] errors
 function M.parse(lines)
 	local s, errs, seen = {}, {}, {}
-	local known = {}
-	for _, f in ipairs(M.fields) do
-		known[f] = true
-	end
 	for i, line in ipairs(lines) do
 		if not line:match("^%s*#") and not line:match("^%s*$") then
 			local field, value = line:match("^%s*([%w_]+)%s*:%s*(.-)%s*$")
 			if not field then
 				table.insert(errs, ("line %d: expected `field: value`"):format(i))
-			elseif not known[field] then
+			elseif not field_of[field] then
 				table.insert(errs, ("line %d: unknown field '%s'"):format(i, field))
 			elseif seen[field] then
 				table.insert(errs, ("line %d: '%s' is given twice"):format(i, field))
 			else
 				seen[field] = true
-				if field == "toolchain" then
+				local kind = field_of[field].kind
+				if kind == "toolchain" then
 					if value ~= "" and value ~= "default" then
 						local provider, version = value:match("^(%S+)%s+(%S+)$")
 						if provider then
@@ -114,20 +101,16 @@ function M.parse(lines)
 							table.insert(errs, ("line %d: toolchain: use `<provider> <version>`, or leave it empty"):format(i))
 						end
 					end
-				elseif field == "cmake_args" then
-					s.cmake_args = build_config.split_words(value)
-				elseif list_fields[field] then
-					s[field] = split_list(value)
-				elseif field == "sysbuild" then
+				elseif kind == "list" then
+					s[field] = separator(field) == " " and build_config.split_words(value) or split_list(value)
+				elseif kind == "bool" then
 					if value == "true" or value == "yes" or value == "on" then
-						s.sysbuild = true
+						s[field] = true
 					elseif value == "false" or value == "no" or value == "off" then
-						s.sysbuild = false
+						s[field] = false
 					else
-						s.sysbuild = value
+						s[field] = value
 					end
-				elseif field == "optimization" then
-					s.optimization = value ~= "" and value or nil
 				else
 					s[field] = value ~= "" and value or nil
 				end
@@ -211,7 +194,7 @@ function M.candidates(form, field)
 		return snippets(app)
 	elseif field == "toolchain" then
 		return toolchains(app)
-	elseif field == "sysbuild" then
+	elseif field_of[field] and field_of[field].kind == "bool" then
 		return { "true", "false" }
 	elseif field == "optimization" then
 		return M.optimizations
@@ -252,7 +235,7 @@ local function complete(form)
 	end
 	local before = line:sub(1, col)
 	local start = colon + 1
-	if list_fields[field] then
+	if is_list(field) and separator(field) == ", " then
 		local last = before:match(".*(),")
 		if last and last > start then
 			start = last + 1
@@ -288,7 +271,7 @@ local function pick(form)
 	end
 	vim.ui.select(items, { prompt = field }, function(choice)
 		if choice and vim.api.nvim_buf_is_valid(form.buf) then
-			set_value(form.buf, lnum, field, choice, list_fields[field])
+			set_value(form.buf, lnum, field, choice, is_list(field))
 		end
 	end)
 end

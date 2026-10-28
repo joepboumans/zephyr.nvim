@@ -5,9 +5,7 @@ local output = require("zephyr.ui.output")
 
 local M = {}
 
-local function notify(msg, level)
-	vim.notify("zephyr: " .. msg, level or vim.log.levels.INFO)
-end
+local notify = require("zephyr.ui.notify")
 
 local function label(cfg)
 	return ("%s  [%s]%s%s"):format(
@@ -19,25 +17,14 @@ local function label(cfg)
 end
 
 local function start(app, cfg, opts)
-	local buf
-	local function stop()
-		build.stop(cfg.dir)
-	end
-	local started, err = build.run(app, cfg, {
-		pristine = opts.pristine,
-		reconfigure = opts.reconfigure,
+	local follow = output.follow("build", {
+		stop = function()
+			build.stop(cfg.dir)
+		end,
 		on_start = function(info)
-			local title = { require("zephyr.toolchain").describe(info.toolchain), "$ " .. table.concat(info.cmd, " ") }
-			buf = output.open("build", title, { stop = stop })
 			require("zephyr.ui.sdk").offer_install(info.toolchain)
 		end,
-		on_output = function(line)
-			output.append(buf, line)
-		end,
 		on_exit = function(res)
-			output.finish(stop)
-			local status = res.stopped and "stopped" or (res.ok and "done" or ("failed, exit " .. res.code))
-			output.append(buf, ("[%s in %.1fs]"):format(status, res.duration))
 			if res.stopped then
 				return notify(("build of %s stopped"):format(cfg.name), vim.log.levels.WARN)
 			end
@@ -54,6 +41,13 @@ local function start(app, cfg, opts)
 				notify(("build of %s failed (%d errors)"):format(cfg.name, #errors), vim.log.levels.ERROR)
 			end
 		end,
+	})
+	local started, err = build.run(app, cfg, {
+		pristine = opts.pristine,
+		reconfigure = opts.reconfigure,
+		on_start = follow.on_start,
+		on_output = follow.on_output,
+		on_exit = follow.on_exit,
 	})
 	if not started then
 		notify(err or (cfg.name .. " did not start"), vim.log.levels.ERROR)
@@ -180,13 +174,6 @@ function M.run(args)
 	local action = args[1]
 	if action == "app" then
 		return require("zephyr.ui.app").select()
-	end
-	local known = action == nil or vim.tbl_contains(M.actions, action)
-	if not known then
-		return notify(
-			("unknown action '%s'; use %s"):format(action, table.concat(M.actions, "|")),
-			vim.log.levels.ERROR
-		)
 	end
 	require("zephyr.ui.app").resolve(function(app)
 		if action == nil then
