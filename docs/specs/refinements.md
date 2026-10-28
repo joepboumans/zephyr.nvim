@@ -51,6 +51,8 @@ The first time zephyr.nvim sees a build directory with no settings (for example 
 - `<CR>` on a line opens a picker for that field.
 - `:w` saves, `q` cancels.
 
+The keys of this form and of the Output window were changed later; see [hotkeys](hotkeys.md).
+
 After saving an edit that needs CMake to reconfigure (board, conf files, overlays, snippets, sysbuild, board roots, CMake arguments, Toolchain), it asks: "Pristine build now / On the next build / Not now". With `setup({ build = { auto_pristine = true } })` it doesn't ask and the next build is pristine.
 
 ## 3. Toolchain per Build configuration
