@@ -45,6 +45,13 @@ describe("the Build configuration settings panel", function()
 		return a
 	end
 
+	-- The toggle picker reopens on the next tick: wait until every queued answer is used.
+	local function answered()
+		vim.wait(500, function()
+			return #answers == 0
+		end)
+	end
+
 	local function eol_text()
 		local out = {}
 		local ns = vim.api.nvim_get_namespaces()["zephyr.build_form"]
@@ -201,6 +208,7 @@ describe("the Build configuration settings panel", function()
 		on("Kconfig files")
 		answer("prj.conf", "debug.conf", "Done")
 		press("<CR>")
+		answered()
 		assert.are.equal("zephyr.conf_files", asked[1].kind)
 		assert.are.same({ "Done", "  debug.conf", "  prj.conf" }, asked[1].items)
 		assert.are.same({ "Done", "  debug.conf", "✓ prj.conf" }, asked[2].items)
@@ -208,11 +216,13 @@ describe("the Build configuration settings panel", function()
 		-- Picking a chosen item removes it; cancelling keeps the toggles so far.
 		answer("prj.conf", nil)
 		press("<CR>")
+		answered()
 		assert.matches("debug.conf", text_of("Kconfig files"))
 		assert.is_nil(text_of("Kconfig files"):match("prj"))
 		on("Snippets")
 		answer("rtt-console", "Done")
 		press("<CR>")
+		answered()
 		assert.are.equal("zephyr.snippets", asked[#asked].kind)
 		press("<C-s>")
 		local s = settings.get(app, cfg.dir)
@@ -343,6 +353,7 @@ describe("the Build configuration settings panel", function()
 		on("Snippets")
 		answer("rtt-console", "Done")
 		press("<CR>")
+		answered()
 		local open_when_asked
 		vim.ui.select = function(items, _, on_choice)
 			asked.pristine = items

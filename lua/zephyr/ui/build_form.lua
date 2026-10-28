@@ -10,7 +10,6 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace("zephyr.build_form")
 
-local optimizations = { "default", "debug", "speed", "size", "none" }
 
 local keys_help = {
 	"<CR>/i  change the setting under the cursor",
@@ -27,9 +26,6 @@ local field_of = {}
 for _, f in ipairs(settings.fields) do
 	field_of[f.name] = f
 end
-
--- Fields without a list of values to pick from: they are typed in.
-local typed = { build_dir = true, board_roots = true, cmake_args = true }
 
 local function toolchain_text(ref)
 	return ref.provider .. " " .. ref.version
@@ -87,13 +83,10 @@ local function snippets(app)
 	return out
 end
 
----Values offered for `field`: board targets, files and snippets in the App,
----optimization levels, or Toolchains as `<provider> <version>`, best first.
----Empty for fields that are typed in.
----@param form table the open panel
----@param field string
----@return string[]
-function M.candidates(form, field)
+-- Values offered for `field`: board targets, files and snippets in the App,
+-- optimization levels, or Toolchains as `<provider> <version>`, best first;
+-- nil for fields that are typed in.
+local function candidates(form, field)
 	local app = form.app
 	if field == "board" then
 		return form.boards or {}
@@ -106,9 +99,9 @@ function M.candidates(form, field)
 	elseif field == "toolchain" then
 		return vim.tbl_map(toolchain_text, require("zephyr.toolchain").ranked(app.workspace))
 	elseif field == "optimization" then
-		return optimizations
+		return { "default", unpack(build_config.optimizations) }
 	end
-	return {}
+	return nil
 end
 
 -- Rendering -------------------------------------------------------------------
@@ -195,7 +188,7 @@ end
 local function toggle_list(form, field)
 	local chosen = form.s[field.name]
 	local items = { "Done" }
-	local values = M.candidates(form, field.name)
+	local values = candidates(form, field.name)
 	for _, v in ipairs(chosen) do
 		if not vim.tbl_contains(values, v) then
 			table.insert(values, v) -- no longer a candidate, but it can still be removed
@@ -216,7 +209,9 @@ local function toggle_list(form, field)
 			table.insert(new, v)
 		end
 		set(form, field.name, new)
-		toggle_list(form, field)
+		vim.schedule(function() -- after the picker's own window has closed
+			toggle_list(form, field)
+		end)
 	end)
 end
 
@@ -224,19 +219,17 @@ local function pick_one(form, field)
 	if field.name == "board" and not form.boards then
 		return notify("still listing boards ...", vim.log.levels.WARN)
 	end
-	local items = M.candidates(form, field.name)
+	local items = candidates(form, field.name)
 	if #items == 0 then
 		return notify("nothing to pick for " .. field.label, vim.log.levels.WARN)
 	end
-	local refs = field.kind == "toolchain" and require("zephyr.toolchain").ranked(form.app.workspace)
-	vim.ui.select(items, { prompt = field.label, kind = "zephyr." .. field.name }, function(choice, idx)
+	vim.ui.select(items, { prompt = field.label, kind = "zephyr." .. field.name }, function(choice)
 		if not choice or not vim.api.nvim_buf_is_valid(form.buf) then
 			return
 		end
-		if refs then
-			choice = require("zephyr.toolchain").ref(refs[idx])
-		elseif field.name == "optimization" and choice == "default" then
-			choice = nil
+		if field.kind == "toolchain" then
+			local provider, version = choice:match("^(%S+) (.+)$")
+			choice = { provider = provider, version = version }
 		end
 		set(form, field.name, choice)
 	end)
@@ -273,7 +266,7 @@ end
 local function change(form, field)
 	if field.kind == "bool" then
 		set(form, field.name, not form.s[field.name])
-	elseif typed[field.name] then
+	elseif not candidates(form, field.name) then
 		type_in(form, field)
 	elseif field.kind == "list" then
 		toggle_list(form, field)
@@ -309,7 +302,12 @@ local function save(form)
 		return notify("not saved:\n" .. table.concat(errs, "\n"), vim.log.levels.ERROR)
 	end
 	local old = form.cfg and form.cfg.settings
-	local cfg = form.cfg and build_config.save(app, s, form.cfg.dir) or build_config.new(app, s)
+	local cfg
+	if form.cfg then
+		cfg = build_config.save(app, s, form.cfg.dir)
+	else
+		cfg = build_config.new(app, s)
+	end
 	close(form)
 	if form.on_save then
 		form.on_save(cfg, old)
