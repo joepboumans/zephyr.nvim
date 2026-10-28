@@ -10,7 +10,7 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace("zephyr.build_form")
 
-M.optimizations = { "default", "debug", "speed", "size", "none" }
+local optimizations = { "default", "debug", "speed", "size", "none" }
 
 local keys_help = {
 	"<CR>/i  change the setting under the cursor",
@@ -106,7 +106,7 @@ function M.candidates(form, field)
 	elseif field == "toolchain" then
 		return vim.tbl_map(toolchain_text, require("zephyr.toolchain").ranked(app.workspace))
 	elseif field == "optimization" then
-		return M.optimizations
+		return optimizations
 	end
 	return {}
 end
@@ -124,8 +124,7 @@ local function show(form, field)
 		if v then
 			return toolchain_text(v)
 		end
-		local tc = require("zephyr.toolchain").default(form.app.workspace)
-		return tc and toolchain_text(tc) or "—", "(default)"
+		return form.default_toolchain or "—", "(default)"
 	elseif field.kind == "list" then
 		if #v == 0 then
 			return "—", field.name == "conf_files" and "(prj.conf)" or nil
@@ -196,10 +195,7 @@ end
 local function toggle_list(form, field)
 	local chosen = form.s[field.name]
 	local items = { "Done" }
-	local values = {}
-	for _, v in ipairs(M.candidates(form, field.name)) do
-		table.insert(values, v)
-	end
+	local values = M.candidates(form, field.name)
 	for _, v in ipairs(chosen) do
 		if not vim.tbl_contains(values, v) then
 			table.insert(values, v) -- no longer a candidate, but it can still be removed
@@ -351,6 +347,8 @@ function M.open(app, opts)
 		s.build_dir = nil -- follows the board until it is set
 	end
 	local form = { app = app, cfg = cfg, on_save = opts.on_save, s = settings.normalize(s), errors = {} }
+	local tc = require("zephyr.toolchain").default(app.workspace)
+	form.default_toolchain = tc and toolchain_text(tc)
 
 	local buf = vim.api.nvim_create_buf(false, true)
 	form.buf = buf
