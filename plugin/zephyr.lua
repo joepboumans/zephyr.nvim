@@ -10,7 +10,7 @@ vim.api.nvim_create_user_command("Zephyr", function(opts)
 	require("zephyr.commands").run(opts)
 end, {
 	nargs = "*",
-	desc = "Zephyr: build, flash, rtt, update, sdk, clangd",
+	desc = "Zephyr: build, flash, rtt, update, sdk, clangd, output",
 	complete = function(arglead, cmdline)
 		return require("zephyr.commands").complete(arglead, cmdline)
 	end,
