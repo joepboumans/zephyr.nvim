@@ -1,126 +1,39 @@
--- The edit buffer for `:Zephyr build new` and `:Zephyr build edit`: a float with
--- one `field: value` line per setting of a Build configuration. `<Tab>`
--- completes values, `<CR>` on a line opens a picker for that field, `:w` saves
--- and `q` cancels.
+-- The settings panel for `:Zephyr build new` and `:Zephyr build edit`: a
+-- read-only float with one labelled row per Build configuration setting.
+-- `<CR>` or `i` on a row changes that setting through `vim.ui.select` or
+-- `vim.ui.input`, `x` resets it, `<C-s>` saves and closes, `q` closes.
 local build_config = require("zephyr.build_config")
 local settings = require("zephyr.settings")
+local notify = require("zephyr.ui.notify")
 
 local M = {}
+
+local ns = vim.api.nvim_create_namespace("zephyr.build_form")
+
+
+local keys_help = {
+	"<CR>/i  change the setting under the cursor",
+	"x       reset it to its default",
+	"<C-s>   save and close",
+	"q       close without saving",
+	"<Esc>   close when nothing changed",
+	"g?      this help",
+}
+
+local LABEL_WIDTH, VALUE_WIDTH = 20, 25
 
 local field_of = {}
 for _, f in ipairs(settings.fields) do
 	field_of[f.name] = f
 end
 
-local function is_list(name)
-	return field_of[name] ~= nil and field_of[name].kind == "list"
+local function toolchain_text(ref)
+	return ref.provider .. " " .. ref.version
 end
 
 -- CMake arguments can hold commas, so they are separated by spaces.
-local function separator(name)
-	return name == "cmake_args" and " " or ", "
-end
-
-M.optimizations = { "default", "debug", "speed", "size", "none" }
-
-local notify = require("zephyr.ui.notify")
-
-local function toolchain_text(ref)
-	return ref and (ref.provider .. " " .. ref.version) or ""
-end
-
----The buffer lines for settings `s`.
----@param app zephyr.App
----@param s zephyr.BuildSettings
----@param is_new boolean
----@return string[]
-function M.render(app, s, is_new)
-	local lines = {
-		("# %s build configuration of %s. :w saves, q cancels, <Tab> completes, <CR> picks."):format(
-			is_new and "New" or "Edit",
-			app.name
-		),
-		"# Lists are comma separated (cmake_args: space separated). Empty means the default.",
-	}
-	for _, f in ipairs(settings.fields) do
-		local v = s[f.name]
-		if v == nil then
-			v = f.default
-		end
-		local text
-		if f.kind == "toolchain" then
-			text = toolchain_text(v)
-		elseif f.kind == "list" then
-			text = table.concat(v or {}, separator(f.name))
-		elseif f.kind == "bool" then
-			text = tostring(v)
-		elseif f.name == "optimization" then
-			text = v or "default"
-		else
-			text = v or ""
-		end
-		table.insert(lines, f.name .. ": " .. text)
-	end
-	return lines
-end
-
-local function split_list(text)
-	local out = {}
-	for item in text:gmatch("[^,]+") do
-		item = vim.trim(item)
-		if item ~= "" then
-			table.insert(out, item)
-		end
-	end
-	return out
-end
-
----Parse the buffer lines back into settings.
----@param lines string[]
----@return zephyr.BuildSettings|nil s, string[] errors
-function M.parse(lines)
-	local s, errs, seen = {}, {}, {}
-	for i, line in ipairs(lines) do
-		if not line:match("^%s*#") and not line:match("^%s*$") then
-			local field, value = line:match("^%s*([%w_]+)%s*:%s*(.-)%s*$")
-			if not field then
-				table.insert(errs, ("line %d: expected `field: value`"):format(i))
-			elseif not field_of[field] then
-				table.insert(errs, ("line %d: unknown field '%s'"):format(i, field))
-			elseif seen[field] then
-				table.insert(errs, ("line %d: '%s' is given twice"):format(i, field))
-			else
-				seen[field] = true
-				local kind = field_of[field].kind
-				if kind == "toolchain" then
-					if value ~= "" and value ~= "default" then
-						local provider, version = value:match("^(%S+)%s+(%S+)$")
-						if provider then
-							s.toolchain = { provider = provider, version = version }
-						else
-							table.insert(errs, ("line %d: toolchain: use `<provider> <version>`, or leave it empty"):format(i))
-						end
-					end
-				elseif kind == "list" then
-					s[field] = separator(field) == " " and build_config.split_words(value) or split_list(value)
-				elseif kind == "bool" then
-					if value == "true" or value == "yes" or value == "on" then
-						s[field] = true
-					elseif value == "false" or value == "no" or value == "off" then
-						s[field] = false
-					else
-						s[field] = value
-					end
-				else
-					s[field] = value ~= "" and value or nil
-				end
-			end
-		end
-	end
-	if #errs > 0 then
-		return nil, errs
-	end
-	return s, errs
+local function list_text(field, values)
+	return table.concat(values, field.name == "cmake_args" and " " or ", ")
 end
 
 -- Candidates ------------------------------------------------------------------
@@ -170,19 +83,10 @@ local function snippets(app)
 	return out
 end
 
-local function toolchains(app)
-	local out = {}
-	for _, tc in ipairs(require("zephyr.toolchain").ranked(app.workspace)) do
-		table.insert(out, toolchain_text({ provider = tc.provider, version = tc.version }))
-	end
-	return out
-end
-
----Values offered for `field`.
----@param form table the open form
----@param field string
----@return string[]
-function M.candidates(form, field)
+-- Values offered for `field`: board targets, files and snippets in the App,
+-- optimization levels, or Toolchains as `<provider> <version>`, best first;
+-- nil for fields that are typed in.
+local function candidates(form, field)
 	local app = form.app
 	if field == "board" then
 		return form.boards or {}
@@ -193,103 +97,209 @@ function M.candidates(form, field)
 	elseif field == "snippets" then
 		return snippets(app)
 	elseif field == "toolchain" then
-		return toolchains(app)
-	elseif field_of[field] and field_of[field].kind == "bool" then
-		return { "true", "false" }
+		return vim.tbl_map(toolchain_text, require("zephyr.toolchain").ranked(app.workspace))
 	elseif field == "optimization" then
-		return M.optimizations
-	elseif field == "build_dir" then
-		local board = form.current_board and form.current_board()
-		return board and { build_config.dir_name(board) } or {}
+		return { "default", unpack(build_config.optimizations) }
 	end
-	return {}
+	return nil
 end
 
--- The open form ------------------------------------------------------------------
+-- Rendering -------------------------------------------------------------------
 
-local function field_at(line)
-	return line:match("^%s*([%w_]+)%s*:")
+-- The value and dim hint shown on the row of `field`.
+local function show(form, field)
+	local v = form.s[field.name]
+	if field.name == "build_dir" and not v then
+		return form.s.board and build_config.dir_name(form.s.board) or "—", "(from board)"
+	elseif field.kind == "bool" then
+		return v and "✓ on" or "off"
+	elseif field.kind == "toolchain" then
+		if v then
+			return toolchain_text(v)
+		end
+		return form.default_toolchain or "—", "(default)"
+	elseif field.kind == "list" then
+		if #v == 0 then
+			return "—", field.name == "conf_files" and "(prj.conf)" or nil
+		end
+		return list_text(field, v)
+	elseif field.name == "optimization" then
+		return v or "default"
+	end
+	return v or "—"
 end
 
-local function set_value(buf, lnum, field, value, append)
-	local line = vim.api.nvim_buf_get_lines(buf, lnum - 1, lnum, false)[1] or ""
-	local current = vim.trim(line:match(":%s*(.*)$") or "")
-	local new = value
-	if append and current ~= "" then
-		local items = split_list(current)
-		if vim.tbl_contains(items, value) then
+local function pad(text, width)
+	return text .. (" "):rep(math.max(1, width - vim.fn.strdisplaywidth(text)))
+end
+
+local function title(form)
+	local name = form.cfg and form.cfg.name or "New build configuration"
+	return (" %s · %s %s"):format(name, form.app.name, form.dirty and "[+] " or "")
+end
+
+local function render(form)
+	local buf = form.buf
+	local lines, hints = {}, {}
+	for i, f in ipairs(settings.fields) do
+		local value, hint = show(form, f)
+		local line = pad(f.label, LABEL_WIDTH) .. value
+		if hint then
+			hints[i] = #pad(line, LABEL_WIDTH + VALUE_WIDTH)
+			line = pad(line, LABEL_WIDTH + VALUE_WIDTH) .. hint
+		end
+		lines[i] = line
+	end
+	vim.bo[buf].modifiable = true
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	vim.bo[buf].modifiable = false
+	vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+	for i, f in ipairs(settings.fields) do
+		if hints[i] then
+			vim.api.nvim_buf_set_extmark(buf, ns, i - 1, hints[i], { end_col = #lines[i], hl_group = "Comment" })
+		end
+		if form.errors[f.name] then
+			vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 0, {
+				virt_text = { { "  " .. form.errors[f.name], "DiagnosticError" } },
+				virt_text_pos = "eol",
+			})
+		end
+	end
+	if vim.api.nvim_win_is_valid(form.win) then
+		vim.api.nvim_win_set_config(form.win, { title = title(form), title_pos = "center" })
+	end
+end
+
+-- Editing ---------------------------------------------------------------------
+
+local list_boards
+
+local function set(form, name, value)
+	form.s[name] = value
+	form.dirty = true
+	form.errors = {}
+	render(form)
+	if name == "board_roots" then
+		list_boards(form)
+	end
+end
+
+-- The toggle picker of a list: `Done` first, then every item with `✓` when chosen.
+local function toggle_list(form, field)
+	local chosen = form.s[field.name]
+	local items = { "Done" }
+	local values = candidates(form, field.name)
+	for _, v in ipairs(chosen) do
+		if not vim.tbl_contains(values, v) then
+			table.insert(values, v) -- no longer a candidate, but it can still be removed
+		end
+	end
+	for _, v in ipairs(values) do
+		table.insert(items, (vim.tbl_contains(chosen, v) and "✓ " or "  ") .. v)
+	end
+	vim.ui.select(items, { prompt = field.label, kind = "zephyr." .. field.name }, function(_, idx)
+		if not idx or idx == 1 or not vim.api.nvim_buf_is_valid(form.buf) then
 			return
 		end
-		new = current .. ", " .. value
-	end
-	vim.api.nvim_buf_set_lines(buf, lnum - 1, lnum, false, { field .. ": " .. new })
-end
-
-local function complete(form)
-	local line = vim.api.nvim_get_current_line()
-	local col = vim.api.nvim_win_get_cursor(0)[2]
-	local field = field_at(line)
-	local colon = line:find(":", 1, true)
-	if not field or not colon or col < colon then
-		return false
-	end
-	local before = line:sub(1, col)
-	local start = colon + 1
-	if is_list(field) and separator(field) == ", " then
-		local last = before:match(".*(),")
-		if last and last > start then
-			start = last + 1
+		local v = values[idx - 1]
+		local new = vim.tbl_filter(function(c)
+			return c ~= v
+		end, chosen)
+		if #new == #chosen then
+			table.insert(new, v)
 		end
-	end
-	while before:sub(start, start) == " " do
-		start = start + 1
-	end
-	local base = before:sub(start)
-	local matches = vim.tbl_filter(function(c)
-		return vim.startswith(c, base)
-	end, M.candidates(form, field))
-	if field == "board" and not form.boards then
-		notify("still listing boards ...")
-	end
-	vim.fn.complete(start, matches)
-	return true
+		set(form, field.name, new)
+		vim.schedule(function() -- after the picker's own window has closed
+			toggle_list(form, field)
+		end)
+	end)
 end
 
-local function pick(form)
-	local lnum = vim.api.nvim_win_get_cursor(0)[1]
-	local line = vim.api.nvim_buf_get_lines(form.buf, lnum - 1, lnum, false)[1] or ""
-	local field = field_at(line)
-	if not field then
-		return
-	end
-	local items = M.candidates(form, field)
-	if field == "board" and not form.boards then
+local function pick_one(form, field)
+	if field.name == "board" and not form.boards then
 		return notify("still listing boards ...", vim.log.levels.WARN)
 	end
+	local items = candidates(form, field.name)
 	if #items == 0 then
-		return notify("nothing to pick for " .. field, vim.log.levels.WARN)
+		return notify("nothing to pick for " .. field.label, vim.log.levels.WARN)
 	end
-	vim.ui.select(items, { prompt = field }, function(choice)
-		if choice and vim.api.nvim_buf_is_valid(form.buf) then
-			set_value(form.buf, lnum, field, choice, is_list(field))
+	vim.ui.select(items, { prompt = field.label, kind = "zephyr." .. field.name }, function(choice)
+		if not choice or not vim.api.nvim_buf_is_valid(form.buf) then
+			return
+		end
+		if field.kind == "toolchain" then
+			local provider, version = choice:match("^(%S+) (.+)$")
+			choice = { provider = provider, version = version }
+		end
+		set(form, field.name, choice)
+	end)
+end
+
+local function type_in(form, field)
+	local v = form.s[field.name]
+	local text = field.kind == "list" and list_text(field, v) or (v or "")
+	vim.ui.input({
+		prompt = field.label .. ": ",
+		default = text,
+		completion = field.name == "board_roots" and "dir" or nil,
+	}, function(input)
+		if not input or not vim.api.nvim_buf_is_valid(form.buf) then
+			return
+		end
+		if field.name == "cmake_args" then
+			set(form, field.name, build_config.split_words(input))
+		elseif field.kind == "list" then
+			set(form, field.name, vim.tbl_filter(function(item)
+				return item ~= ""
+			end, vim.tbl_map(vim.trim, vim.split(input, ",", { plain = true }))))
+		else
+			input = vim.trim(input)
+			set(form, field.name, input ~= "" and input or nil)
 		end
 	end)
 end
 
-local function save(form)
-	local lines = vim.api.nvim_buf_get_lines(form.buf, 0, -1, false)
-	local s, errs = M.parse(lines)
-	local app = form.app
-	if s then
-		if not s.build_dir and s.board then
-			s.build_dir = build_config.dir_name(s.board)
-		end
-		s = settings.normalize(s)
-		errs = build_config.validate(app, s)
+local function field_under_cursor(form)
+	return settings.fields[vim.api.nvim_win_get_cursor(form.win)[1]]
+end
+
+local function change(form, field)
+	if field.kind == "bool" then
+		set(form, field.name, not form.s[field.name])
+	elseif not candidates(form, field.name) then
+		type_in(form, field)
+	elseif field.kind == "list" then
+		toggle_list(form, field)
+	else
+		pick_one(form, field)
 	end
+end
+
+local function reset(form, field)
+	set(form, field.name, field.kind == "list" and {} or field.default)
+end
+
+local function close(form)
+	if vim.api.nvim_win_is_valid(form.win) then
+		vim.api.nvim_win_close(form.win, true)
+	end
+end
+
+local function save(form)
+	local app = form.app
+	-- An unset build directory is named after the board.
+	local s = build_config.defaults(app, form.s)
+	local errs = build_config.validate(app, s)
 	if #errs > 0 then
-		notify("not saved:\n" .. table.concat(errs, "\n"), vim.log.levels.ERROR)
-		return false
+		form.errors = {}
+		for _, e in ipairs(errs) do
+			local name, msg = e:match("^([%w_]+): (.*)$")
+			if name then
+				form.errors[name] = msg
+			end
+		end
+		render(form)
+		return notify("not saved:\n" .. table.concat(errs, "\n"), vim.log.levels.ERROR)
 	end
 	local old = form.cfg and form.cfg.settings
 	local cfg
@@ -298,46 +308,62 @@ local function save(form)
 	else
 		cfg = build_config.new(app, s)
 	end
-	form.cfg = cfg
-	vim.bo[form.buf].modified = false
+	close(form)
 	if form.on_save then
-		form.on_save(cfg, old)
+		-- On the next tick, so a picker it opens (the Pristine question) gets
+		-- the editor after the panel is fully gone, not a window behind it.
+		vim.schedule(function()
+			form.on_save(cfg, old)
+		end)
 	end
-	return true
 end
 
----Open the edit buffer for `opts.cfg` of `app`, or for a new Build configuration.
+-- List the boards for the panel's board roots, then call `then_`.
+function list_boards(form, then_)
+	form.boards = nil
+	build_config.boards(form.app, function(boards, err)
+		if err then
+			notify(err, vim.log.levels.WARN)
+		end
+		form.boards = boards or {}
+		if then_ and vim.api.nvim_buf_is_valid(form.buf) then
+			then_()
+		end
+	end, form.s)
+end
+
+---Open the settings panel for `opts.cfg` of `app`, or for a new Build
+---configuration, which starts with the board picker. `on_save` runs after the
+---panel has closed.
 ---@param app zephyr.App
 ---@param opts? { cfg?: zephyr.BuildConfig, on_save?: fun(cfg: zephyr.BuildConfig, old: zephyr.BuildSettings|nil) }
----@return table form { buf, win, app, cfg }
 function M.open(app, opts)
 	opts = opts or {}
 	local cfg = opts.cfg
-	local s = cfg and (cfg.settings or build_config.settings_from_disk(app, cfg)) or build_config.defaults(app, {})
-	if not cfg then
-		s.build_dir = nil -- named after the board on save
-	end
-	if cfg and not cfg.settings then
+	local s
+	if cfg then
+		s = cfg.settings or build_config.settings_from_disk(app, cfg)
 		cfg = vim.tbl_extend("force", cfg, { settings = s })
+	else
+		s = build_config.defaults(app, {})
+		s.build_dir = nil -- follows the board until it is set
 	end
-	local form = { app = app, cfg = cfg, on_save = opts.on_save }
+	local form = { app = app, cfg = cfg, on_save = opts.on_save, s = settings.normalize(s), errors = {} }
+	local tc = require("zephyr.toolchain").default(app.workspace)
+	form.default_toolchain = tc and toolchain_text(tc)
 
 	local buf = vim.api.nvim_create_buf(false, true)
 	form.buf = buf
-	vim.bo[buf].buftype = "acwrite"
+	vim.bo[buf].buftype = "nofile"
 	vim.bo[buf].bufhidden = "wipe"
 	vim.bo[buf].swapfile = false
 	local name = ("zephyr://build-config/%s/%s"):format(app.name, cfg and cfg.name or "new")
 	if not pcall(vim.api.nvim_buf_set_name, buf, name) then
 		pcall(vim.api.nvim_buf_set_name, buf, name .. "-" .. buf)
 	end
-	local lines = M.render(app, s, cfg == nil)
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-	vim.bo[buf].modified = false
-	vim.bo[buf].filetype = "zephyrbuildconfig"
 
 	local width = math.min(100, math.max(60, math.floor(vim.o.columns * 0.7)))
-	local height = #lines + 1
+	local height = #settings.fields
 	form.win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
 		width = width,
@@ -346,52 +372,45 @@ function M.open(app, opts)
 		col = math.floor((vim.o.columns - width) / 2),
 		style = "minimal",
 		border = "rounded",
-		title = cfg and (" " .. cfg.name .. " ") or " New build configuration ",
+		title = title(form),
 		title_pos = "center",
+		footer = " <CR>/i change · x reset · <C-s> save · q close · g? help ",
 	})
-	-- Start on the first value to fill in: the board of a new one.
-	vim.api.nvim_win_set_cursor(form.win, { 3, #lines[3] })
+	vim.wo[form.win].cursorline = true
+	render(form)
+	vim.bo[buf].filetype = "zephyrbuildconfig"
+	vim.api.nvim_win_set_cursor(form.win, { 1, 0 }) -- the board
 
-	function form.current_board()
-		for _, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
-			local b = line:match("^%s*board%s*:%s*(.-)%s*$")
-			if b and b ~= "" then
-				return b
-			end
-		end
+	local function map(lhs, rhs, desc)
+		vim.keymap.set("n", lhs, rhs, { buffer = buf, nowait = true, desc = "zephyr: " .. desc })
 	end
-
-	vim.api.nvim_create_autocmd("BufWriteCmd", {
-		buffer = buf,
-		callback = function()
-			save(form)
-		end,
-	})
-	local map = function(mode, lhs, rhs, desc)
-		vim.keymap.set(mode, lhs, rhs, { buffer = buf, nowait = true, desc = "zephyr: " .. desc })
+	local function change_here()
+		change(form, field_under_cursor(form))
 	end
-	map("n", "q", function()
-		vim.bo[buf].modified = false
-		if vim.api.nvim_win_is_valid(form.win) then
-			vim.api.nvim_win_close(form.win, true)
-		end
+	map("<CR>", change_here, "change this setting")
+	map("i", change_here, "change this setting")
+	map("x", function()
+		reset(form, field_under_cursor(form))
+	end, "reset this setting")
+	map("<C-s>", function()
+		save(form)
+	end, "save and close")
+	map("q", function()
+		close(form)
 	end, "close without saving")
-	map("n", "<CR>", function()
-		pick(form)
-	end, "pick a value for this field")
-	map("i", "<Tab>", function()
-		if vim.fn.pumvisible() == 1 then
-			return vim.api.nvim_feedkeys(vim.keycode("<C-n>"), "n", false)
+	map("<Esc>", function()
+		if form.dirty then
+			return notify("unsaved changes: <C-s> saves, q discards them", vim.log.levels.WARN)
 		end
-		if not complete(form) then
-			vim.api.nvim_feedkeys("\t", "n", false)
-		end
-	end, "complete this field")
+		close(form)
+	end, "close when unchanged")
+	map("g?", function()
+		notify("settings panel keys:\n" .. table.concat(keys_help, "\n"))
+	end, "show keys")
 
-	build_config.boards(app, function(boards)
-		form.boards = boards or {}
-	end, s)
-	return form
+	list_boards(form, not cfg and function()
+		pick_one(form, field_of.board)
+	end or nil)
 end
 
 return M

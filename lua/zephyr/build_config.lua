@@ -621,7 +621,8 @@ function M.new(app, fields)
 	return cfg
 end
 
-local valid_optimizations = { debug = true, speed = true, size = true, none = true }
+---Optimization levels besides Zephyr's default.
+M.optimizations = { "debug", "speed", "size", "none" }
 
 ---Problems with settings `s` for `app`, such as a missing file.
 ---@param app zephyr.App
@@ -650,7 +651,7 @@ function M.validate(app, s)
 	if type(s.sysbuild) ~= "boolean" then
 		table.insert(errs, "sysbuild: use true or false")
 	end
-	if s.optimization ~= nil and not valid_optimizations[s.optimization] then
+	if s.optimization ~= nil and not vim.tbl_contains(M.optimizations, s.optimization) then
 		table.insert(errs, "optimization: use default, debug, speed, size or none")
 	end
 	return errs
