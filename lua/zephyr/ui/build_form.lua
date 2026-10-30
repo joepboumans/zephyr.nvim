@@ -310,7 +310,11 @@ local function save(form)
 	end
 	close(form)
 	if form.on_save then
-		form.on_save(cfg, old)
+		-- On the next tick, so a picker it opens (the Pristine question) gets
+		-- the editor after the panel is fully gone, not a window behind it.
+		vim.schedule(function()
+			form.on_save(cfg, old)
+		end)
 	end
 end
 

@@ -361,6 +361,9 @@ describe("the Build configuration settings panel", function()
 			on_choice(items[2]) -- On the next build
 		end
 		press("<C-s>")
+		vim.wait(500, function()
+			return asked.pristine ~= nil
+		end)
 		assert.are.same({ "Pristine build now", "On the next build", "Not now" }, asked.pristine)
 		assert.is_false(open_when_asked)
 		assert.is_true(build_config.pristine_next(app, build_config.active(app)))
@@ -377,6 +380,9 @@ describe("the Build configuration settings panel", function()
 		press("<CR>")
 		local n = #asked
 		press("<C-s>")
+		vim.wait(500, function()
+			return build_config.pristine_next(app, build_config.active(app))
+		end)
 		assert.are.equal(n, #asked)
 		ui.build(app)
 		local cmd = calls[#calls].cmd
