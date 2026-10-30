@@ -1,8 +1,8 @@
 -- The Output window of the default UI: one `zephyr://output` scratch buffer
 -- that build, flash and update stream into, shown in a bottom split and reused
--- between runs. Only `q` closes it: while a command runs, `q` stops the command
--- and closes the window; once it has finished, `q` just closes the window.
--- Every other key works as usual, so the output can be scrolled and searched.
+-- between runs. `q` or `<Esc>` in it, or `:Zephyr output close` from anywhere,
+-- closes it: while a command runs, that stops the command first. Every other
+-- key works as usual, so the output can be scrolled and searched.
 local M = {}
 
 M.NAME = "zephyr://output"
@@ -51,7 +51,9 @@ local function ensure_buf()
 	buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].bufhidden = "hide"
 	pcall(vim.api.nvim_buf_set_name, buf, M.NAME)
-	vim.keymap.set("n", "q", M.close, { buffer = buf, nowait = true, desc = "zephyr: stop the command and close" })
+	for _, lhs in ipairs({ "q", "<Esc>" }) do
+		vim.keymap.set("n", lhs, M.close, { buffer = buf, nowait = true, desc = "zephyr: stop the command and close" })
+	end
 	return buf
 end
 
@@ -145,6 +147,16 @@ function M.follow(name, opts)
 			end
 		end,
 	}
+end
+
+M.actions = { "close" }
+
+---`:Zephyr output close`
+---@param args string[]
+function M.run(args)
+	if args[1] == "close" then
+		M.close()
+	end
 end
 
 return M

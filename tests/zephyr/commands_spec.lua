@@ -24,6 +24,10 @@ describe(":Zephyr", function()
 		assert.are.same({ "erase", "probe" }, commands.complete("", "Zephyr flash "))
 	end)
 
+	it("completes output actions", function()
+		assert.are.same({ "close" }, commands.complete("", "Zephyr output "))
+	end)
+
 	it("runs a subcommand's UI with the remaining args", function()
 		local ui = require("zephyr.ui.build")
 		local got
