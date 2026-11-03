@@ -864,16 +864,31 @@ function M.boards_command(app, s)
 end
 
 ---List the boards west knows about, one per Board target with its revisions,
----custom boards included.
+---custom boards included. Before Zephyr 4.2 `west boards` has no revision
+---keys; then it lists again without them, and no board has revisions.
 ---@param app zephyr.App
 ---@param on_done fun(boards: zephyr.Board[]|nil, err: string|nil)
 ---@param s? zephyr.BuildSettings settings whose board roots to search too
 function M.boards(app, on_done, s)
-	require("zephyr.process").run(M.boards_command(app, s), { cwd = app.dir }, function(res)
-		if res.code ~= 0 then
-			return on_done(nil, vim.trim((res.stderr or "") ~= "" and res.stderr or res.stdout or "west boards failed"))
+	local process = require("zephyr.process")
+	local cmd = M.boards_command(app, s)
+	local function run(on_failure)
+		process.run(cmd, { cwd = app.dir }, function(res)
+			if res.code ~= 0 then
+				local out = vim.trim((res.stderr or "") ~= "" and res.stderr or res.stdout or "")
+				return on_failure(out ~= "" and out or "west boards failed")
+			end
+			on_done(M.parse_boards(res.stdout or ""))
+		end)
+	end
+	run(function(err)
+		if not err:find("KeyError") then
+			return on_done(nil, err)
 		end
-		on_done(M.parse_boards(res.stdout or ""))
+		cmd[4] = "{name};{qualifiers}"
+		run(function(e)
+			on_done(nil, e)
+		end)
 	end)
 end
 

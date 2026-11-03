@@ -174,6 +174,23 @@ describe("build_config", function()
 		assert.are.equal("qemu_x86@2", build_config.board_target({ target = "qemu_x86", revisions = { "1", "2" } }, "2"))
 	end)
 
+	it("lists boards without revisions on Zephyr before 4.2, whose west boards has no revision keys", function()
+		local calls = h.stub_process(function(call)
+			if call.cmd[4]:find("revisions") then
+				return { code = 1, stderr = "Traceback (most recent call last):\n    args.format.format(\nKeyError: 'revisions'\n" }
+			end
+			return { code = 0, stdout = "nrf9160dk;nrf9160/ns\n" }
+		end)
+		local got, err
+		build_config.boards(app, function(b, e)
+			got, err = b, e
+		end)
+		calls.restore()
+		assert.is_nil(err)
+		assert.are.equal("{name};{qualifiers}", calls[2].cmd[4])
+		assert.are.same({ { target = "nrf9160dk/nrf9160/ns", revisions = {} } }, got)
+	end)
+
 	it("reports a failing west boards", function()
 		local calls = h.stub_process(function()
 			return { code = 1, stderr = "FATAL ERROR: no west workspace\n" }

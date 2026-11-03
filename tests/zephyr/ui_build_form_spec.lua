@@ -72,7 +72,7 @@ describe("the Build configuration settings panel", function()
 				return {
 					code = 0,
 					stdout = "myboard;nrf5340/cpuapp;None;None\nnrf52840dk;nrf52840;None;None\n"
-						.. "nrf9160dk;nrf9160/ns;0.7.0,0.14.0,1.0.0;0.14.0\n",
+						.. "nrf9160dk;nrf9160/ns;0.7.0 0.14.0 1.0.0;0.14.0\n",
 				}
 			end
 			return { code = 0 }
