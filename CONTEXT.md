@@ -28,6 +28,14 @@ _Avoid_: build, target, build folder
 A build that wipes a Build configuration's directory and configures it again from scratch, so only what the Build configuration itself records survives.
 _Avoid_: clean build, rebuild
 
+**Board target**:
+What a Build configuration builds for: a board name, optionally one of its Board revisions, and its qualifiers (SoC, CPU cluster, variant).
+_Avoid_: board (when the revision or qualifiers matter), target
+
+**Board revision**:
+One hardware version of a board; a Board target that names none uses the board's default revision.
+_Avoid_: board version, hardware version
+
 **Board root**:
 A directory that holds board definitions, searched in addition to Zephyr's own boards; custom boards are found through one.
 _Avoid_: board dir, boards folder
@@ -71,6 +79,10 @@ _Avoid_: probe backend, probe plugin
 The Probe a Workspace flashes through, chosen once and remembered.
 _Avoid_: current probe, selected device
 
+**Recover**:
+A flash that first erases the whole target, including its protection settings, to lift readback protection; only some flash runners support it.
+_Avoid_: unlock, mass erase (that is a plain erase)
+
 **RTT viewer**:
 A live view of a target's SEGGER RTT output, read through a Probe; by default the J-Link RTT client in a terminal.
 _Avoid_: log window, serial terminal
@@ -85,7 +97,11 @@ _Avoid_: task, process (that is the OS process underneath)
 
 **Output window**:
 The split of the Default UI that shows the streamed output of a Job.
-_Avoid_: log window, terminal (unless it is the RTT viewer)
+_Avoid_: log window, terminal (unless it is the RTT viewer or the Toolchain terminal)
+
+**Toolchain terminal**:
+An interactive shell of the Default UI that runs with the environment of the Active toolchain, so commands typed there behave like the ones zephyr.nvim runs.
+_Avoid_: shell (alone), toolchain env, Output window
 
 **Default UI**:
 The commands and pickers shipped with the plugin, built only on the public API.
