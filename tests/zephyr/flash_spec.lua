@@ -36,6 +36,13 @@ describe("flash.command", function()
 			flash.command(cfg, { runner = "jlink", probe = probe, erase = true })
 		)
 	end)
+
+	it("passes --recover and never --erase with it", function()
+		assert.are.same(
+			{ "west", "flash", "-d", "/a/build", "--recover" },
+			flash.command(cfg, { recover = true, erase = true })
+		)
+	end)
 end)
 
 describe("flash.run", function()
