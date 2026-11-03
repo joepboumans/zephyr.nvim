@@ -89,7 +89,11 @@ _Avoid_: task, process (that is the OS process underneath)
 
 **Output window**:
 The split of the Default UI that shows the streamed output of a Job.
-_Avoid_: log window, terminal (unless it is the RTT viewer)
+_Avoid_: log window, terminal (unless it is the RTT viewer or the Toolchain terminal)
+
+**Toolchain terminal**:
+An interactive shell of the Default UI that runs with the environment of the Active toolchain, so commands typed there behave like the ones zephyr.nvim runs.
+_Avoid_: shell (alone), toolchain env, Output window
 
 **Default UI**:
 The commands and pickers shipped with the plugin, built only on the public API.
