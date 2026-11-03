@@ -21,7 +21,7 @@ describe(":Zephyr", function()
 	end)
 
 	it("completes flash actions", function()
-		assert.are.same({ "erase", "probe" }, commands.complete("", "Zephyr flash "))
+		assert.are.same({ "erase", "recover", "probe" }, commands.complete("", "Zephyr flash "))
 	end)
 
 	it("completes output actions", function()

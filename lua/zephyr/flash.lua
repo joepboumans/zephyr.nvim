@@ -60,6 +60,7 @@ end
 ---@field runner? string flash with this runner (`-r`) instead of the flash-runner in runners.yaml
 ---@field probe? zephyr.Probe flash through this Probe (`--dev-id`); defaults to the Workspace's active Probe
 ---@field erase? boolean mass erase before flashing (`--erase`)
+---@field recover? boolean Recover before flashing (`--recover`); it erases everything, so erase is not passed with it
 ---@field on_start? fun(info: { cmd: string[], toolchain: zephyr.ToolchainChoice }) right before west starts
 ---@field on_output? fun(line: string, stream: "stdout"|"stderr") each output line, as it arrives
 ---@field on_exit? fun(result: zephyr.FlashResult)
@@ -77,7 +78,7 @@ end
 
 ---The `west flash` command line for `config`.
 ---@param config zephyr.BuildConfig
----@param opts? { runner?: string, probe?: zephyr.Probe, erase?: boolean }
+---@param opts? { runner?: string, probe?: zephyr.Probe, erase?: boolean, recover?: boolean }
 ---@return string[]
 function M.command(config, opts)
 	opts = opts or {}
@@ -88,7 +89,9 @@ function M.command(config, opts)
 	if opts.probe and opts.probe.serial then
 		vim.list_extend(cmd, { "--dev-id", opts.probe.serial })
 	end
-	if opts.erase then
+	if opts.recover then
+		table.insert(cmd, "--recover")
+	elseif opts.erase then
 		table.insert(cmd, "--erase")
 	end
 	return cmd
@@ -137,7 +140,12 @@ function M.run(app, config, opts)
 	if err then
 		return false, err
 	end
-	local cmd = M.command(config, { runner = opts.runner, probe = probe, erase = opts.erase })
+	local cmd = M.command(config, {
+		runner = opts.runner,
+		probe = probe,
+		erase = opts.erase,
+		recover = opts.recover,
+	})
 	return require("zephyr.job").start(config.dir, cmd, {
 		cwd = app.dir,
 		env = env,

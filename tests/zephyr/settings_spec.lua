@@ -170,9 +170,9 @@ describe("board roots", function()
 		end, settings.normalize({ board_roots = { "extra-roots" } }))
 		calls.restore()
 		assert.are.same({
-			"west", "boards", "--format", "{name};{qualifiers}",
+			"west", "boards", "--format", "{name};{qualifiers};{revisions};{revision_default}",
 			"--board-root", topdir, "--board-root", app.dir, "--board-root", topdir .. "/extra-roots",
 		}, calls[1].cmd)
-		assert.are.same({ "myboard/nrf5340/cpuapp" }, got)
+		assert.are.same({ { target = "myboard/nrf5340/cpuapp", revisions = {} } }, got)
 	end)
 end)

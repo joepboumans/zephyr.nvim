@@ -67,6 +67,14 @@ describe(":Zephyr flash (default UI)", function()
 		assert.are.same({ "west", "flash", "-d", root .. "/build", "--dev-id", "1050234567" }, calls[2].cmd)
 	end)
 
+	it("flashes with recover through the same Output window", function()
+		found = { found[1] }
+		ui.flash(app, { recover = true })
+		assert.are.same({ "west", "flash", "-d", root .. "/build", "--dev-id", "683000000", "--recover" }, calls[1].cmd)
+		local lines = vim.api.nvim_buf_get_lines(vim.fn.bufnr("zephyr://output"), 0, -1, false)
+		assert.matches("^%$ west flash %-d .*%-%-recover$", lines[2])
+	end)
+
 	it("uses the only connected probe without asking", function()
 		found = { found[1] }
 		ui.flash(app)

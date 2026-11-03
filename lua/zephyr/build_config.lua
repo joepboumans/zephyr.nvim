@@ -452,9 +452,15 @@ function M.settings_from_disk(app, disk)
 		overlays = info_list(image_info, "devicetree", "extra-user-files") or disk.overlays,
 		board_roots = roots,
 	}
+	-- build_info.yml records the revision even when it is the default; CMake
+	-- caches the Board target as given, so a chosen revision shows there.
+	local board = board_from_info(top_info) or board_from_info(image_info) or disk.board
+	if disk.board and disk.board:find("@") then
+		board = disk.board
+	end
 	local out = {
 		build_dir = settings.relative(app.dir, disk.dir),
-		board = board_from_info(top_info) or board_from_info(image_info) or disk.board,
+		board = board,
 		snippets = #disk.snippets > 0 and vim.deepcopy(disk.snippets) or cmd.snippets,
 		sysbuild = disk.sysbuild,
 		optimization = cmd.optimization,
@@ -782,31 +788,66 @@ function M.pristine_next(app, cfg)
 	return pristine_state(app)[cfg.dir] == true
 end
 
----Parse `west boards --format '{name};{qualifiers}'` output into full board targets.
+---@class zephyr.Board
+---@field target string Board target without a revision, e.g. "nrf9160dk/nrf9160/ns"
+---@field revisions string[] its Board revisions, empty when it has none
+---@field default_revision string|nil
+
+---Parse `west boards --format '{name};{qualifiers};{revisions};{revision_default}'`
+---output: one entry per Board target.
 ---@param text string
----@return string[] sorted, e.g. { "nrf52840dk/nrf52840", "nrf5340dk/nrf5340/cpuapp" }
+---@return zephyr.Board[] sorted by target
 function M.parse_boards(text)
 	local seen, out = {}, {}
-	local function add(b)
-		if b ~= "" and not seen[b] then
-			seen[b] = true
-			table.insert(out, b)
+	local function list(field)
+		if field == "None" then
+			return {}
+		end
+		local items = {}
+		for item in (field or ""):gmatch("[^,%s]+") do
+			table.insert(items, item)
+		end
+		return items
+	end
+	local function add(target, revisions, default)
+		if target ~= "" and not seen[target] then
+			seen[target] = true
+			table.insert(out, { target = target, revisions = revisions, default_revision = default })
 		end
 	end
 	for line in vim.gsplit(text, "\n", { plain = true }) do
-		local name, quals = line:match("^%s*([^;%s]+);?(.-)%s*$")
-		if name then
-			if quals == "" then
-				add(name)
-			else
-				for q in quals:gmatch("[^,%s]+") do
-					add(name .. "/" .. q)
-				end
+		local fields = vim.split(vim.trim(line), ";", { plain = true })
+		local name = fields[1]
+		if name ~= "" and not name:find("%s") then
+			local revisions = list(fields[3])
+			local default = fields[4] and fields[4] ~= "" and fields[4] ~= "None" and fields[4] or nil
+			local quals = list(fields[2])
+			if #quals == 0 then
+				add(name, revisions, default)
+			end
+			for _, q in ipairs(quals) do
+				add(name .. "/" .. q, revisions, default)
 			end
 		end
 	end
-	table.sort(out)
+	table.sort(out, function(a, b)
+		return a.target < b.target
+	end)
 	return out
+end
+
+---The Board target of `board` at `revision`: `name@revision/qualifiers`, or
+---just its target for the default revision (or none), so the build follows the
+---board's default.
+---@param board zephyr.Board
+---@param revision? string
+---@return string
+function M.board_target(board, revision)
+	if not revision or revision == board.default_revision then
+		return board.target
+	end
+	local name, quals = board.target:match("^([^/]+)(.*)$")
+	return name .. "@" .. revision .. quals
 end
 
 ---The `west boards` command line listing boards for `app`, with the board roots
@@ -815,16 +856,17 @@ end
 ---@param s? zephyr.BuildSettings
 ---@return string[]
 function M.boards_command(app, s)
-	local cmd = { "west", "boards", "--format", "{name};{qualifiers}" }
+	local cmd = { "west", "boards", "--format", "{name};{qualifiers};{revisions};{revision_default}" }
 	for _, r in ipairs(M.board_roots(app, s)) do
 		vim.list_extend(cmd, { "--board-root", r })
 	end
 	return cmd
 end
 
----List the boards west knows about, with their qualifiers, custom boards included.
+---List the boards west knows about, one per Board target with its revisions,
+---custom boards included.
 ---@param app zephyr.App
----@param on_done fun(boards: string[]|nil, err: string|nil)
+---@param on_done fun(boards: zephyr.Board[]|nil, err: string|nil)
 ---@param s? zephyr.BuildSettings settings whose board roots to search too
 function M.boards(app, on_done, s)
 	require("zephyr.process").run(M.boards_command(app, s), { cwd = app.dir }, function(res)

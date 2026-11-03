@@ -1,4 +1,4 @@
--- Default UI for `:Zephyr flash [erase]` and `:Zephyr flash probe`.
+-- Default UI for `:Zephyr flash [erase|recover]` and `:Zephyr flash probe`.
 local build_config = require("zephyr.build_config")
 local flash = require("zephyr.flash")
 local probes = require("zephyr.probes")
@@ -69,7 +69,7 @@ end
 
 ---Flash the active Build configuration of `app`.
 ---@param app zephyr.App
----@param opts? { erase?: boolean }
+---@param opts? { erase?: boolean, recover?: boolean }
 function M.flash(app, opts)
 	opts = opts or {}
 	local cfg = build_config.active(app)
@@ -95,6 +95,7 @@ function M.flash(app, opts)
 		local started, err = flash.run(app, cfg, {
 			probe = probe,
 			erase = opts.erase,
+			recover = opts.recover,
 			on_start = follow.on_start,
 			on_output = follow.on_output,
 			on_exit = follow.on_exit,
@@ -105,7 +106,7 @@ function M.flash(app, opts)
 	end)
 end
 
-M.actions = { "erase", "probe" }
+M.actions = { "erase", "recover", "probe" }
 
 ---@param args string[]
 function M.run(args)
@@ -115,6 +116,8 @@ function M.run(args)
 			M.flash(app)
 		elseif action == "erase" then
 			M.flash(app, { erase = true })
+		elseif action == "recover" then
+			M.flash(app, { recover = true })
 		elseif action == "probe" then
 			M.pick(app)
 		end

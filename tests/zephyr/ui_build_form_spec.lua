@@ -69,7 +69,11 @@ describe("the Build configuration settings panel", function()
 		app = app_mod.from_dir(topdir .. "/app")
 		calls = h.stub_process(function(call)
 			if call.cmd[2] == "boards" then
-				return { code = 0, stdout = "myboard;nrf5340/cpuapp\nnrf52840dk;nrf52840\n" }
+				return {
+					code = 0,
+					stdout = "myboard;nrf5340/cpuapp;None;None\nnrf52840dk;nrf52840;None;None\n"
+						.. "nrf9160dk;nrf9160/ns;0.7.0,0.14.0,1.0.0;0.14.0\n",
+				}
 			end
 			return { code = 0 }
 		end)
@@ -110,7 +114,8 @@ describe("the Build configuration settings panel", function()
 		assert.are.equal("zephyr.board", asked[1].kind)
 		-- The board list included custom boards through the board roots.
 		assert.is_true(vim.tbl_contains(calls[1].cmd, "--board-root"))
-		assert.are.same({ "myboard/nrf5340/cpuapp", "nrf52840dk/nrf52840" }, asked[1].items)
+		assert.are.same({ "myboard/nrf5340/cpuapp", "nrf52840dk/nrf52840", "nrf9160dk/nrf9160/ns" }, asked[1].items)
+		assert.are.equal(1, #asked) -- no revisions, so no second pick
 		assert.are.equal(1, vim.api.nvim_win_get_cursor(0)[1])
 		assert.matches("myboard/nrf5340/cpuapp", text_of("Board target"))
 		assert.matches("build_myboard_nrf5340_cpuapp.*%(from board%)", text_of("Build directory"))
@@ -123,6 +128,25 @@ describe("the Build configuration settings panel", function()
 		local active = build_config.active(app)
 		assert.are.equal(app.dir .. "/build_myboard_nrf5340_cpuapp", active.dir)
 		assert.are.equal("myboard/nrf5340/cpuapp", active.board)
+	end)
+
+	it("asks for the Board revision of a board that has revisions, default first", function()
+		answer("nrf9160dk/nrf9160/ns", "1.0.0")
+		ui.new(app)
+		assert.are.equal("zephyr.board_revision", asked[2].kind)
+		assert.are.same({ "0.14.0", "0.7.0", "1.0.0" }, asked[2].items)
+		assert.matches("nrf9160dk@1.0.0/nrf9160/ns", text_of("Board target"))
+		press("<C-s>")
+		assert.are.equal("nrf9160dk@1.0.0/nrf9160/ns", build_config.active(app).board)
+		assert.are.equal(app.dir .. "/build_nrf9160dk_1.0.0_nrf9160_ns", build_config.active(app).dir)
+		local cmd = require("zephyr.build").command(build_config.active(app), { app = app })
+		assert.are.equal("nrf9160dk@1.0.0/nrf9160/ns", cmd[vim.fn.index(cmd, "-b") + 2])
+	end)
+
+	it("writes no revision when the default one is picked", function()
+		answer("nrf9160dk/nrf9160/ns", "0.14.0")
+		ui.new(app)
+		assert.matches("Board target%s+nrf9160dk/nrf9160/ns", text_of("Board target"))
 	end)
 
 	it("keeps the panel open with an empty board when the board picker is cancelled", function()
@@ -367,6 +391,27 @@ describe("the Build configuration settings panel", function()
 		assert.are.same({ "Pristine build now", "On the next build", "Not now" }, asked.pristine)
 		assert.is_false(open_when_asked)
 		assert.is_true(build_config.pristine_next(app, build_config.active(app)))
+	end)
+
+	it("asks about a Pristine build when only the Board revision changed", function()
+		local cfg = build_config.new(app, { board = "nrf9160dk/nrf9160/ns" })
+		vim.fn.mkdir(cfg.dir, "p")
+		vim.fn.writefile({ "CACHED_BOARD:STRING=nrf9160dk/nrf9160/ns", "ZEPHYR_BASE:PATH=/z" }, cfg.dir .. "/CMakeCache.txt")
+		ui.edit(app)
+		on("Board target")
+		answer("nrf9160dk/nrf9160/ns", "1.0.0")
+		press("<CR>")
+		answered()
+		vim.ui.select = function(items, _, on_choice)
+			asked.pristine = items
+			on_choice(items[2]) -- On the next build
+		end
+		press("<C-s>")
+		vim.wait(500, function()
+			return asked.pristine ~= nil
+		end)
+		assert.are.same({ "Pristine build now", "On the next build", "Not now" }, asked.pristine)
+		assert.are.equal("nrf9160dk@1.0.0/nrf9160/ns", settings.get(app, cfg.dir).board)
 	end)
 
 	it("doesn't ask with auto_pristine, and the next build is pristine", function()
