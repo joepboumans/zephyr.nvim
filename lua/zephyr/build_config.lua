@@ -863,30 +863,62 @@ function M.boards_command(app, s)
 	return cmd
 end
 
+-- Revisions and default of board `name` from the board.yml in `dir`, as the
+-- `{revisions};{revision_default}` fields of `west boards` would give them.
+local function board_yml_revisions(dir, name)
+	local doc = require("zephyr.yaml").read(dir .. "/board.yml") or {}
+	for _, b in ipairs(doc.boards or { doc.board }) do
+		if type(b) == "table" and b.name == name and type(b.revision) == "table" then
+			local names = {}
+			for _, r in ipairs(b.revision.revisions or {}) do
+				table.insert(names, type(r) == "table" and r.name or r)
+			end
+			if #names > 0 then
+				return table.concat(names, " "), b.revision.default or "None"
+			end
+		end
+	end
+	return "None", "None"
+end
+
 ---List the boards west knows about, one per Board target with its revisions,
 ---custom boards included. Before Zephyr 4.2 `west boards` has no revision
----keys; then it lists again without them, and no board has revisions.
+---keys; then it lists the board directories and the revisions come from
+---their board.yml.
 ---@param app zephyr.App
 ---@param on_done fun(boards: zephyr.Board[]|nil, err: string|nil)
 ---@param s? zephyr.BuildSettings settings whose board roots to search too
 function M.boards(app, on_done, s)
 	local process = require("zephyr.process")
 	local cmd = M.boards_command(app, s)
-	local function run(on_failure)
+	local function run(on_stdout, on_failure)
 		process.run(cmd, { cwd = app.dir }, function(res)
 			if res.code ~= 0 then
 				local out = vim.trim((res.stderr or "") ~= "" and res.stderr or res.stdout or "")
 				return on_failure(out ~= "" and out or "west boards failed")
 			end
-			on_done(M.parse_boards(res.stdout or ""))
+			on_done(M.parse_boards(on_stdout(res.stdout or "")))
 		end)
 	end
-	run(function(err)
+	run(function(text)
+		return text
+	end, function(err)
 		if not err:find("KeyError") then
 			return on_done(nil, err)
 		end
-		cmd[4] = "{name};{qualifiers}"
-		run(function(e)
+		cmd[4] = "{name};{qualifiers};{dir}"
+		run(function(text)
+			local lines = {}
+			for line in vim.gsplit(text, "\n", { plain = true }) do
+				local name, quals, dir = line:match("^%s*([^;]*);([^;]*);(.-)%s*$")
+				if name then
+					local revisions, default = board_yml_revisions(dir, name)
+					line = table.concat({ name, quals, revisions, default }, ";")
+				end
+				table.insert(lines, line)
+			end
+			return table.concat(lines, "\n")
+		end, function(e)
 			on_done(nil, e)
 		end)
 	end)

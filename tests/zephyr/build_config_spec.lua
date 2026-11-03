@@ -174,12 +174,13 @@ describe("build_config", function()
 		assert.are.equal("qemu_x86@2", build_config.board_target({ target = "qemu_x86", revisions = { "1", "2" } }, "2"))
 	end)
 
-	it("lists boards without revisions on Zephyr before 4.2, whose west boards has no revision keys", function()
+	it("reads revisions from board.yml on Zephyr before 4.2, whose west boards has no revision keys", function()
+		local dir = h.fixtures .. "/boards/nrf9160dk" -- board.yml of Zephyr v3.7.0
 		local calls = h.stub_process(function(call)
 			if call.cmd[4]:find("revisions") then
 				return { code = 1, stderr = "Traceback (most recent call last):\n    args.format.format(\nKeyError: 'revisions'\n" }
 			end
-			return { code = 0, stdout = "nrf9160dk;nrf9160/ns\n" }
+			return { code = 0, stdout = "nrf9160dk;nrf9160,nrf9160/ns;" .. dir .. "\nqemu_x86;;" .. h.fixtures .. "/boards\n" }
 		end)
 		local got, err
 		build_config.boards(app, function(b, e)
@@ -187,8 +188,12 @@ describe("build_config", function()
 		end)
 		calls.restore()
 		assert.is_nil(err)
-		assert.are.equal("{name};{qualifiers}", calls[2].cmd[4])
-		assert.are.same({ { target = "nrf9160dk/nrf9160/ns", revisions = {} } }, got)
+		assert.are.equal("{name};{qualifiers};{dir}", calls[2].cmd[4])
+		assert.are.same({
+			{ target = "nrf9160dk/nrf9160", revisions = { "0.7.0", "0.14.0" }, default_revision = "0.14.0" },
+			{ target = "nrf9160dk/nrf9160/ns", revisions = { "0.7.0", "0.14.0" }, default_revision = "0.14.0" },
+			{ target = "qemu_x86", revisions = {} },
+		}, got)
 	end)
 
 	it("reports a failing west boards", function()
