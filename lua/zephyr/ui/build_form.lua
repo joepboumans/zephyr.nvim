@@ -89,7 +89,9 @@ end
 local function candidates(form, field)
 	local app = form.app
 	if field == "board" then
-		return form.boards or {}
+		return vim.tbl_map(function(b)
+			return b.target
+		end, form.boards or {})
 	elseif field == "conf_files" or field == "extra_conf_files" then
 		return files_in(app, ".conf")
 	elseif field == "overlays" then
@@ -215,6 +217,30 @@ local function toggle_list(form, field)
 	end)
 end
 
+-- After the board: its Board revision, default first, when it has several.
+local function pick_revision(form, board)
+	if #board.revisions == 0 then
+		return set(form, "board", board.target)
+	end
+	local revisions = { board.default_revision }
+	for _, r in ipairs(board.revisions) do
+		if r ~= board.default_revision then
+			table.insert(revisions, r)
+		end
+	end
+	vim.ui.select(revisions, {
+		prompt = "Board revision",
+		kind = "zephyr.board_revision",
+		format_item = function(r)
+			return r == board.default_revision and (r .. " (default)") or r
+		end,
+	}, function(revision)
+		if revision and vim.api.nvim_buf_is_valid(form.buf) then
+			set(form, "board", build_config.board_target(board, revision))
+		end
+	end)
+end
+
 local function pick_one(form, field)
 	if field.name == "board" and not form.boards then
 		return notify("still listing boards ...", vim.log.levels.WARN)
@@ -223,13 +249,15 @@ local function pick_one(form, field)
 	if #items == 0 then
 		return notify("nothing to pick for " .. field.label, vim.log.levels.WARN)
 	end
-	vim.ui.select(items, { prompt = field.label, kind = "zephyr." .. field.name }, function(choice)
+	vim.ui.select(items, { prompt = field.label, kind = "zephyr." .. field.name }, function(choice, idx)
 		if not choice or not vim.api.nvim_buf_is_valid(form.buf) then
 			return
 		end
 		if field.kind == "toolchain" then
 			local provider, version = choice:match("^(%S+) (.+)$")
 			choice = { provider = provider, version = version }
+		elseif field.name == "board" then
+			return pick_revision(form, form.boards[idx])
 		end
 		set(form, field.name, choice)
 	end)

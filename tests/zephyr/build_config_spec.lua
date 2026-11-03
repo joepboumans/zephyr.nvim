@@ -133,7 +133,7 @@ describe("build_config", function()
 		assert.is_true(cfg.sysbuild)
 	end)
 
-	it("lists boards with their qualifiers from west boards", function()
+	it("lists boards with their qualifiers and revisions from west boards", function()
 		local calls = h.stub_process(function()
 			return { code = 0, stdout = table.concat(h.output("west_boards.txt"), "\n") }
 		end)
@@ -142,7 +142,10 @@ describe("build_config", function()
 			got = b
 		end)
 		calls.restore()
-		assert.are.same({ "west", "boards", "--format", "{name};{qualifiers}" }, calls[1].cmd)
+		assert.are.same(
+			{ "west", "boards", "--format", "{name};{qualifiers};{revisions};{revision_default}" },
+			calls[1].cmd
+		)
 		assert.are.equal(root, calls[1].opts.cwd)
 		assert.are.same({
 			"nrf52840dk/nrf52811",
@@ -150,8 +153,25 @@ describe("build_config", function()
 			"nrf5340dk/nrf5340/cpuapp",
 			"nrf5340dk/nrf5340/cpuapp/ns",
 			"nrf5340dk/nrf5340/cpunet",
+			"nrf9160dk/nrf52840",
+			"nrf9160dk/nrf9160",
+			"nrf9160dk/nrf9160/ns",
 			"qemu_x86",
-		}, got)
+		}, vim.tbl_map(function(b)
+			return b.target
+		end, got))
+		assert.are.same({ target = "nrf52840dk/nrf52840", revisions = {} }, got[2])
+		assert.are.same(
+			{ target = "nrf9160dk/nrf9160/ns", revisions = { "0.7.0", "0.14.0", "1.0.0" }, default_revision = "0.14.0" },
+			got[8]
+		)
+	end)
+
+	it("writes a revision into the Board target only when it is not the default", function()
+		local board = { target = "nrf9160dk/nrf9160/ns", revisions = { "0.14.0", "1.0.0" }, default_revision = "0.14.0" }
+		assert.are.equal("nrf9160dk/nrf9160/ns", build_config.board_target(board, "0.14.0"))
+		assert.are.equal("nrf9160dk@1.0.0/nrf9160/ns", build_config.board_target(board, "1.0.0"))
+		assert.are.equal("qemu_x86@2", build_config.board_target({ target = "qemu_x86", revisions = { "1", "2" } }, "2"))
 	end)
 
 	it("reports a failing west boards", function()

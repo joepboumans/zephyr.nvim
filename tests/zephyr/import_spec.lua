@@ -65,6 +65,23 @@ describe("importing build directories", function()
 		assert.are.same({}, s.cmake_args)
 	end)
 
+	it("imports a chosen Board revision from the cache, and none for the default", function()
+		local dir = app.dir .. "/build_plain"
+		local info = vim.fn.readfile(dir .. "/build_info.yml")
+		table.insert(info, 5, "    revision: 2.0.0")
+		vim.fn.writefile(info, dir .. "/build_info.yml")
+		-- build_info.yml records the revision either way; the cache has what was asked for.
+		assert.are.equal("nrf52840dk/nrf52840", build_config.settings_from_disk(app, build_config.read(dir)).board)
+
+		local cache = vim.fn.readfile(dir .. "/CMakeCache.txt")
+		cache[1] = "CACHED_BOARD:STRING=nrf52840dk@2.0.0/nrf52840"
+		vim.fn.writefile(cache, dir .. "/CMakeCache.txt")
+		local cfg = build_config.get(app, dir)
+		assert.are.equal("nrf52840dk@2.0.0/nrf52840", cfg.board)
+		assert.are.equal("nrf52840dk@2.0.0/nrf52840", settings.get(app, dir).board)
+		assert.are.same({}, build_config.differences(app, cfg))
+	end)
+
 	it("imports once, with a notification event naming the Build configuration", function()
 		build_config.list(app)
 		build_config.list(app)
