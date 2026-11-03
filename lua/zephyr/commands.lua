@@ -13,6 +13,7 @@ local modules = {
 	sdk = "zephyr.ui.sdk",
 	clangd = "zephyr.ui.clangd",
 	output = "zephyr.ui.output",
+	terminal = "zephyr.ui.terminal",
 }
 
 function M.names()
