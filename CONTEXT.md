@@ -28,6 +28,14 @@ _Avoid_: build, target, build folder
 A build that wipes a Build configuration's directory and configures it again from scratch, so only what the Build configuration itself records survives.
 _Avoid_: clean build, rebuild
 
+**Board target**:
+What a Build configuration builds for: a board name, optionally one of its Board revisions, and its qualifiers (SoC, CPU cluster, variant).
+_Avoid_: board (when the revision or qualifiers matter), target
+
+**Board revision**:
+One hardware version of a board; a Board target that names none uses the board's default revision.
+_Avoid_: board version, hardware version
+
 **Board root**:
 A directory that holds board definitions, searched in addition to Zephyr's own boards; custom boards are found through one.
 _Avoid_: board dir, boards folder
