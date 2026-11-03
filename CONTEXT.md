@@ -71,6 +71,10 @@ _Avoid_: probe backend, probe plugin
 The Probe a Workspace flashes through, chosen once and remembered.
 _Avoid_: current probe, selected device
 
+**Recover**:
+A flash that first erases the whole target, including its protection settings, to lift readback protection; only some flash runners support it.
+_Avoid_: unlock, mass erase (that is a plain erase)
+
 **RTT viewer**:
 A live view of a target's SEGGER RTT output, read through a Probe; by default the J-Link RTT client in a terminal.
 _Avoid_: log window, serial terminal
