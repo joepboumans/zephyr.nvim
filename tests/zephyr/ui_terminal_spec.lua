@@ -60,7 +60,8 @@ describe(":Zephyr terminal (default UI)", function()
 		vim.o.shell = "sh"
 		warnings = {}
 		vim.notify = function(msg, level)
-			if level == vim.log.levels.WARN then
+			-- Only the terminal's own warnings; opening a file in the fixture can warn about pins.
+			if level == vim.log.levels.WARN and msg:match("Toolchain") then
 				table.insert(warnings, msg)
 			end
 		end
@@ -91,7 +92,7 @@ describe(":Zephyr terminal (default UI)", function()
 	end)
 
 	it("toggles one terminal, and opens a new one when the Active toolchain changed", function()
-		vim.cmd("only")
+		vim.cmd("silent! only")
 		ui.toggle()
 		local buf = vim.api.nvim_get_current_buf()
 		assert.are.equal(2, #vim.api.nvim_list_wins())
