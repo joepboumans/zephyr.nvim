@@ -45,6 +45,23 @@ describe("flash.command", function()
 	end)
 end)
 
+describe("flash.protected", function()
+	it("spots readback protection in nrfjprog and nrfutil output", function()
+		assert.is_true(flash.protected({
+			"-- runners.nrfjprog: Flashing file: zephyr.hex",
+			"ERROR: The operation attempted is unavailable due to readback protection in",
+			"ERROR: your device. Please use --recover to unlock the device.",
+		}))
+		assert.is_true(flash.protected({ "Error: One or more batch tasks failed:", " * 1050234567: NotAvailableBecauseProtection" }))
+		assert.is_true(flash.protected({ "Error: Device has APPROTECT enabled" }))
+	end)
+
+	it("is false for other failures", function()
+		assert.is_false(flash.protected({ "ERROR: No debugger connected" }))
+		assert.is_false(flash.protected({}))
+	end)
+end)
+
 describe("flash.run", function()
 	local root, app, restore_state, calls, events
 

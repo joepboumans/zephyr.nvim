@@ -97,6 +97,25 @@ function M.command(config, opts)
 	return cmd
 end
 
+-- What the nrfjprog and nrfutil runners print when readback protection blocks a flash.
+local PROTECTED = { "readback protection", "notavailablebecauseprotection", "approtect" }
+
+---True when a failed flash's output says the device has readback protection,
+---so a Recover would get it flashing again.
+---@param output string[] the flash's output lines
+---@return boolean
+function M.protected(output)
+	for _, line in ipairs(output or {}) do
+		line = line:lower()
+		for _, text in ipairs(PROTECTED) do
+			if line:find(text, 1, true) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 ---True while a Job (a flash or a build) of `build_dir` is running.
 ---@param build_dir string
 function M.is_running(build_dir)
