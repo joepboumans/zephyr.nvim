@@ -75,6 +75,36 @@ describe(":Zephyr flash (default UI)", function()
 		assert.matches("^%$ west flash %-d .*%-%-recover$", lines[2])
 	end)
 
+	it("offers recover when readback protection blocks the flash", function()
+		found = { found[1] }
+		calls.restore()
+		calls = h.stub_process(function()
+			return { code = 1, stdout_lines = { "ERROR: The operation attempted is unavailable due to readback protection in" } }
+		end)
+		local prompts = {}
+		vim.ui.select = function(items, opts, on_choice)
+			table.insert(prompts, opts.prompt)
+			on_choice(items[1])
+		end
+		ui.flash(app)
+		assert.are.equal(1, #prompts)
+		assert.matches("Recover erases the whole device", prompts[1])
+		assert.are.equal(2, #calls)
+		assert.are.same({ "west", "flash", "-d", root .. "/build", "--dev-id", "683000000", "--recover" }, calls[2].cmd)
+		assert.are.equal(1, #prompts) -- a failed recover does not ask again
+	end)
+
+	it("does not offer recover for other failures", function()
+		found = { found[1] }
+		calls.restore()
+		calls = h.stub_process(function()
+			return { code = 1, stdout_lines = { "ERROR: No debugger connected" } }
+		end)
+		ui.flash(app)
+		assert.are.equal(0, asked)
+		assert.are.equal(1, #calls)
+	end)
+
 	it("uses the only connected probe without asking", function()
 		found = { found[1] }
 		ui.flash(app)

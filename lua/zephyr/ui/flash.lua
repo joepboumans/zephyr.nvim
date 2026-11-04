@@ -67,6 +67,17 @@ function M.resolve_probe(app, on_probe)
 	end)
 end
 
+-- A flash blocked by readback protection: offer to flash again with recover.
+local function offer_recover(app, cfg)
+	vim.ui.select({ "Recover and flash", "Cancel" }, {
+		prompt = cfg.name .. ": the device has readback protection. Recover erases the whole device. Recover and flash?",
+	}, function(choice)
+		if choice == "Recover and flash" then
+			M.flash(app, { recover = true })
+		end
+	end)
+end
+
 ---Flash the active Build configuration of `app`.
 ---@param app zephyr.App
 ---@param opts? { erase?: boolean, recover?: boolean }
@@ -89,6 +100,9 @@ function M.flash(app, opts)
 					notify(("flashed %s%s (%.1fs)"):format(cfg.name, where, res.duration))
 				else
 					notify(("flash of %s%s failed"):format(cfg.name, where), vim.log.levels.ERROR)
+					if not opts.recover and flash.protected(res.output) then
+						offer_recover(app, cfg)
+					end
 				end
 			end,
 		})
